@@ -4,7 +4,13 @@
 
 Type `look` or click an exit in the room survey. Follow the clue in `read field-note.txt` to find a letter. Use `go NAME`, `go DIRECTION`, `back`, `read FILE`, `help` and `quit` while the sprite is offline. Run shell scripts directly with `!` or `！`. Try `!mkdir tower`, `go tower`, then `!pwd`.
 
-This first milestone runs entirely in the browser using just-bash and an in-memory filesystem. Each script starts in the current room. File changes and movement last until reload or a new expedition. The shell supports a subset of Unix utilities, pipes and redirection. AI providers and the installable native login shell are planned.
+The demo runs in the browser using just-bash and an in-memory filesystem. Each script starts in the current room. File changes and movement last until reload or a new expedition. The shell supports a subset of Unix utilities, pipes and redirection.
+
+## Connect the sprite
+
+Open **Sprite offline · Settings**, enter your provider’s base URL (for OpenAI, `https://api.openai.com/v1`), model ID and API key, then select **Enable sprite**. Local servers can use a loopback HTTP URL and omit the key. The provider must allow browser requests from the demo’s origin (CORS). Settings and credentials live in tab memory. Requests go directly to the selected endpoint using the [OpenAI Chat Completions format](https://platform.openai.com/docs/api-reference/chat/create).
+
+Try “take me to the archives” or “make a tower and enter it”. Ordinary text goes to the sprite, which can reply or execute one action immediately in the virtual world. Room details and a short turn history accompany the request. Requested file reads print verbatim. For a shell summary, the provider receives a bounded excerpt of the result. Use `!` or `！` to run a script directly. If the provider fails, play continues offline in the current room; a failed summary displays the completed result. Re-enable the sprite in Settings to reconnect.
 
 ## Development
 

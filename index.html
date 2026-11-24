@@ -14,7 +14,7 @@
       <div class="caption"><span class="eyebrow" id="region">Expedition</span><h1 id="realm">Opening the atlas…</h1><span id="seed"></span></div>
     </section>
     <div class="workspace">
-      <section class="console"><div class="section-title"><h2>Expedition log</h2><span class="status">Sprite offline</span></div>
+      <section class="console"><div class="section-title"><h2>Expedition log</h2><button id="sprite" class="status" title="Configure the sprite" aria-haspopup="dialog">Sprite offline · Settings</button></div>
         <div id="log" role="log" aria-label="Terminal output" tabindex="0"></div>
         <form><label for="command" aria-label="Command">❯</label><input id="command" placeholder="Enter a command…" autocomplete="off" maxlength="8192" spellcheck="false" disabled><button id="run" disabled>Run ↵</button></form>
         <div class="shortcuts"><button data-line="look">look</button><button data-line="back">back</button><button data-line="help">help</button><button data-line="!pwd">!pwd</button></div>
@@ -28,5 +28,16 @@
   <footer><span>Browser expedition · In-memory world</span><a href="./licenses/credits.txt">Licenses</a></footer>
   <dialog><h2>Start a new expedition?</h2><p>This will replace the current map, files and log.</p>
     <div><button id="cancel">Keep exploring</button> <button id="restart">Start expedition</button></div></dialog>
+  <dialog id="settings" aria-labelledby="settings-title">
+    <h2 id="settings-title">Your sprite companion</h2>
+    <p>Connect a Chat Completions provider. The sprite can act immediately in this expedition. Messages, room details and output for summaries go directly to your provider.</p>
+    <form id="provider" autocomplete="off">
+      <label>API base URL<input id="endpoint" type="url" required value="https://api.openai.com/v1" spellcheck="false"></label>
+      <label>Model ID<input id="model" required placeholder="Model served by your provider" spellcheck="false"></label>
+      <label>API key (optional)<input id="key" type="password" autocomplete="off" placeholder="Kept in this tab only"></label>
+      <p id="settings-error" role="alert"></p>
+      <div><button type="submit">Enable sprite</button> <button id="disconnect" type="button">Disconnect</button> <button id="dismiss" type="button">Cancel</button></div>
+    </form>
+  </dialog>
   <script type="module" src="./app.js"></script>
 </body></html>

@@ -7,3 +7,11 @@ button{font:inherit;color:inherit;background:transparent;cursor:pointer;border:1
 #log{height:clamp(230px,32vh,390px);overflow:auto;padding:18px 22px;background:#101b1a;scrollbar-color:#42574b transparent}pre,code,input,.shortcuts button,.exit,.file{font-family:var(--mono)}pre{margin:0 0 12px;font-size:14px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}.typed{color:var(--gold);margin-bottom:4px}.intro{color:#c2d4bf}.console form{padding:10px 14px;border-block:1px solid var(--rule);gap:10px}label{color:var(--gold)}input{color:var(--ink);font-size:16px;flex:1;min-width:0;background:transparent;border:0;padding:8px 0}#run{background:#d6b67e;color:#17271e;border-color:#d6b67e;font:600 14px var(--mono)}.shortcuts{gap:8px;padding:10px 16px}.shortcuts button{padding:3px 10px;font-size:13px;color:var(--muted)}.survey{padding:18px 20px}h3{font-size:27px;line-height:1.25;margin:4px 0}code{color:var(--muted);font-size:13px;overflow-wrap:anywhere}h4{color:var(--muted);margin:18px 0 7px}.exit,.file{display:flex;gap:12px;width:100%;text-align:left;border:0;border-top:1px solid var(--rule);padding:7px 0;font-size:14px;overflow-wrap:anywhere}.exit span{color:var(--gold);min-width:49px}.empty{font-size:14px;color:var(--muted)}
 footer{margin:21px auto;padding-bottom:18px}dialog{background:var(--panel);color:var(--ink);border:1px solid var(--rule);border-radius:4px;padding:24px}dialog::backdrop{background:#081613ab}dialog p{color:var(--muted)}
 @media(max-width:730px){header,main,footer{width:calc(100% - 28px)}header{padding:12px 0}nav{gap:12px}.brand{font-size:21px}.brand span{font-size:23px}nav button{padding:6px 8px}.landscape{min-height:155px;margin:16px 0}.caption{padding:18px}.workspace{grid-template-columns:1fr;gap:14px}#log{height:224px}.section-title{padding:10px 15px}.survey{padding:14px 15px}.shortcuts button,.survey button{min-height:34px}footer{gap:10px;font-size:12px}}
+#settings{width:min(460px,calc(100% - 32px));max-height:90vh}
+#provider{display:grid;gap:12px}
+#provider label{display:grid;gap:4px;color:var(--muted)}
+#provider input{background:var(--bg);border:1px solid var(--rule);padding:8px}
+#settings-error{margin:0;color:var(--gold)}
+#settings-error:empty{display:none}
+.section-title .status{font:13px var(--mono);color:var(--muted)}
+.status.active:before{background:var(--gold)}

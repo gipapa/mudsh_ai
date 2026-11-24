@@ -1,11 +1,22 @@
 import { scenes } from "./en.ts";
 import type { Room } from "./world.ts";
 import { drawRegion } from "./panorama.ts";
+import { completionURL, type SpriteConfig } from "./sprite.ts";
 
 const el = <T extends HTMLElement = HTMLElement>(id:string) => document.getElementById(id) as T;
 const input = el<HTMLInputElement>("command"), log = el("log"), dialog = document.querySelector("dialog")!;
 let worker: Worker, busy = true, ended = false, timer = 0;
 let history: string[] = [], cursor = 0;
+let config: SpriteConfig | undefined, resetHistory = false;
+const settings = el<HTMLDialogElement>("settings"), sprite = el<HTMLButtonElement>("sprite");
+function spriteStatus(stage?: string) {
+  sprite.textContent = stage || (config ? "Sprite enabled · Settings" : "Sprite offline · Settings");
+  sprite.classList.toggle("active",!!config);
+}
+function watchdog(ms: number) {
+  clearTimeout(timer);
+  timer=window.setTimeout(()=>fail("Interpreter stopped responding. Choose New expedition to restart."),ms);
+}
 function print(value:string, kind="") {
   if (!value) return;
   const pre=document.createElement("pre"); pre.className=kind; pre.textContent=value;
@@ -13,6 +24,7 @@ function print(value:string, kind="") {
 }
 function controls() {
   input.disabled=busy||ended;
+  sprite.disabled=busy;
   for(const b of document.querySelectorAll<HTMLButtonElement>("#run,[data-line],.exit,.file")) b.disabled=input.disabled;
 }
 function render(room:Room) {
@@ -37,11 +49,12 @@ function fail(message:string) {
 function send(line:string) {
   if(busy||ended||!line.trim())return;
   history.push(line);cursor=history.length;input.value="";print("❯ "+line,"typed");
-  busy=true;controls();worker.postMessage({line});
-  timer=window.setTimeout(()=>fail("Interpreter stopped responding. Choose New expedition to restart."),10000);
+  busy=true;controls();worker.postMessage({line,config,resetHistory});
+  resetHistory=false;
+  watchdog(10000);
 }
 function start(){
-  worker?.terminate();clearTimeout(timer);busy=true;ended=false;controls();
+  worker?.terminate();clearTimeout(timer);busy=true;ended=false;controls();spriteStatus();
   history=[];cursor=0;input.value="";log.replaceChildren();
   const seed=crypto.getRandomValues(new Uint32Array(1))[0], scene=scenes[seed%3];
   el("realm").textContent=scene.name;el("region").textContent=scene.region;
@@ -51,6 +64,15 @@ function start(){
   worker.onerror=()=>fail("Unable to open the interpreter. Start a new expedition to retry.");
   let first=true;
   worker.onmessage=({data})=>{
+    if (data.stage) {
+      const executing = data.stage === "executing";
+      watchdog(executing ? 10000 : 40000);
+      spriteStatus(executing ? "Sprite acting…" : data.stage === "thinking" ? "Sprite listening…" : "Sprite describing…");
+      if (data.command) print("Sprite ❯ "+data.command,"typed");
+      return;
+    }
+    if (data.offline) {config=undefined;resetHistory=true;}
+    spriteStatus();
     clearTimeout(timer);render(data.room);print(data.output);
     if(first){print(data.room.title+"\n"+data.room.description,"intro");
       print("Read field-note.txt to begin. Type help for MUD verbs, or !ls to use the shell.");first=false;}
@@ -67,4 +89,22 @@ input.onkeydown=e=>{
 for(const b of document.querySelectorAll<HTMLButtonElement>("[data-line]"))b.onclick=()=>send(b.dataset.line!);
 el("new").onclick=()=>dialog.showModal();el("cancel").onclick=()=>dialog.close();
 el("restart").onclick=()=>{dialog.close();start();};
+sprite.onclick=()=>{el("settings-error").textContent="";settings.showModal();};
+el("dismiss").onclick=()=>settings.close();
+el("disconnect").onclick=()=>{
+  config=undefined;el<HTMLInputElement>("key").value="";resetHistory=true;
+  spriteStatus();settings.close();print("Sprite disconnected. Use MUD verbs or !command.");
+};
+el<HTMLFormElement>("provider").onsubmit=e=>{
+  e.preventDefault();
+  try {
+    const endpoint=completionURL(el<HTMLInputElement>("endpoint").value.trim());
+    const model=el<HTMLInputElement>("model").value.trim();
+    if (!model) throw Error("Enter the model ID supplied by your provider.");
+    config={endpoint,model,key:el<HTMLInputElement>("key").value.trim()};
+    resetHistory=true;spriteStatus();settings.close();
+    print("Sprite enabled. Speak naturally, or use !command to bypass the sprite.");
+    input.focus();
+  } catch(error) {el("settings-error").textContent=error instanceof Error ? error.message : "Invalid settings";}
+};
 start();
