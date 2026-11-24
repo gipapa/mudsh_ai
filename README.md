@@ -1,6 +1,22 @@
 # mudsh_ai
 
-`mudsh_ai` 構想用 MUD 文字冒險的方式操作 shell。目錄是房間，檔案是物件。你可以用 `look` 查看目前的目錄、用 `go` 在目錄間移動，也可以用自然語言請 AI 嚮導把意圖翻成 shell 指令，在執行前先預覽。
+[Play the web demo](https://gipapa.github.io/mudsh_ai/). Explore a filesystem as a text adventure. Directories are rooms, files are objects, and your expedition starts in a randomly seeded castle, dungeon or abandoned mine.
+
+Type `look` or click an exit in the room survey. Follow the clue in `read field-note.txt` to find a letter. Use `go NAME`, `go DIRECTION`, `back`, `read FILE`, `help` and `quit` while the sprite is offline. Run shell scripts directly with `!` or `！`. Try `!mkdir tower`, `go tower`, then `!pwd`.
+
+This first milestone runs entirely in the browser using just-bash and an in-memory filesystem. Each script starts in the current room. File changes and movement last until reload or a new expedition. The shell supports a subset of Unix utilities, pipes and redirection. AI providers and the installable native login shell are planned.
+
+## Development
+
+Use Node.js 24 and npm. Run `npm ci`, `npm run build`, then `npm test`. Serve `dist/` with a static HTTP server, for example `python3 -m http.server --directory dist`. To replay commands locally against the same built interpreter:
+
+```sh
+MUD_SEED=0 npm run probe -- 'look' '!mkdir tower' 'go tower' '!pwd'
+```
+
+The shared TypeScript expedition logic lives in `src/world.ts`; English scenes and MUD messages live in `src/en.ts`. The browser runs the interpreter in a dedicated Worker. Pushing to `main` builds, tests and deploys the demo to GitHub Pages.
+
+Application code is [MIT licensed](LICENSE). See [third-party credits](THIRD_PARTY.md) for the browser interpreter and the cwd integration adapted from agent-go-round.
 
 ## 歷史與參考資料
 

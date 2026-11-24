@@ -1,0 +1,25 @@
+import { Bash } from "just-bash/browser";
+import { Expedition, initialFiles, startPath } from "./world.ts";
+
+export function createSession(seed: number) {
+  const bash = new Bash({files: initialFiles(seed), cwd:startPath, env:{HOME:startPath},
+    commands:["ls","cat","pwd","mkdir","touch","echo","printf","cp","mv","rm","rmdir","head","tail","wc","sort","uniq","grep","find","date","tr","seq","test"],
+    executionLimits:{maxCommandCount:1000,maxLoopIterations:1000,maxExecutionTimeMs:3500,
+      maxOutputSize:65536,maxSourceBytes:8192,maxStringLength:262144,maxLiveBytes:8388608}});
+  const fs = bash.fs;
+  return new Expedition({
+    resolve:(cwd,path) => fs.resolvePath(cwd,path),
+    read:path => fs.readFile(path),
+    async list(path) {
+      return Promise.all((await fs.readdir(path)).map(async name => {
+        const stat = await fs.stat(fs.resolvePath(path,name)).catch(() => null);
+        return {name,directory:!!stat?.isDirectory};
+      }));
+    },
+    async shell(script,cwd) {
+      const result = await bash.exec(script,{cwd,rawScript:true});
+      if (!("cwd" in result) || typeof result.cwd !== "string") throw Error("Missing interpreter cwd");
+      return {...result,cwd:result.cwd};
+    }
+  },seed);
+}

@@ -1,0 +1,30 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {createSession} from "../dist/session.js";
+import {route} from "../src/world.ts";
+import {scenes} from "../src/en.ts";
+test("both prefixes bypass the sprite and bare shell syntax never does", () => {
+  for (const online of [true,false]) for (const prefix of ["!","！"]) assert.equal(route(prefix+"pwd",online),"shell");
+  assert.equal(route("git status",true),"sprite"); assert.equal(route("git status",false),"mud");
+});
+for (const seed of [0,1,2,111]) test("room and shell stay synchronized, seed "+seed,async () => {
+  const game = createSession(seed);
+  const initial = await game.survey();
+  assert.deepEqual(initial,await createSession(seed).survey());
+  assert.match(await game.run("git status"),/sprite is offline/);
+  await game.run("!mkdir tower");
+  const expanded = await game.survey();
+  for (const e of initial.exits) assert.deepEqual(expanded.exits.find(x=>x.name===e.name),e);
+  await game.run("go tower");
+  assert.equal(await game.run("！pwd"),"/expedition/tower\n");
+  await game.run("back");
+  const scene = scenes[seed%3];
+  const exit = initial.exits.find(e=>e.name===scene.folders[0]);
+  await game.run("go "+exit.direction);
+  assert.equal(await game.run("read letter.txt"),scene.letter);
+  assert.equal(await game.run("!cat letter.txt | head -n 1"),scene.letter.split("\n")[0]+"\n");
+  await game.run("!cd ../tower; PWD=/fake");
+  assert.equal((await game.survey()).cwd,"/expedition/tower");
+  await game.run("!echo hello > stone"); assert.equal(await game.run("read stone"),"hello\n");
+  await game.run("quit"); assert.match(await game.run("!pwd"),/ended/);
+});
