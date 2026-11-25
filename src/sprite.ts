@@ -30,10 +30,11 @@ export function modelsURL(base: string) {
   return url.href;
 }
 
-export async function listModels(endpoint: string, key: string): Promise<ModelInfo[]> {
+export async function listModels(endpoint: string, key: string, signal?: AbortSignal): Promise<ModelInfo[]> {
+  const timeout = AbortSignal.timeout(15000);
   const res = await fetch(modelsURL(endpoint), {
     method:"GET", redirect:"error", credentials:"omit", referrerPolicy:"no-referrer",
-    signal:AbortSignal.timeout(15000),
+    signal:signal ? AbortSignal.any([timeout, signal]) : timeout,
     headers:{Accept:"application/json", ...(key ? {Authorization:"Bearer "+key} : {})}
   });
   if (!res.ok) throw Error("Provider returned HTTP " + res.status);

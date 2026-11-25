@@ -9,7 +9,37 @@ let worker: Worker, busy = true, ended = false, timer = 0;
 let history: string[] = [], cursor = 0;
 let config: SpriteConfig | undefined, resetHistory = false;
 const settings = el<HTMLDialogElement>("settings"), sprite = el<HTMLButtonElement>("sprite");
-const providers = {openai:"https://api.openai.com/v1",groq:"https://api.groq.com/openai/v1"} as const;
+const providerSelect = el<HTMLSelectElement>("provider-select");
+const endpointInput = el<HTMLInputElement>("endpoint");
+const modelInput = el<HTMLInputElement>("model");
+const keyInput = el<HTMLInputElement>("key");
+const fetchModelsButton = el<HTMLButtonElement>("fetch-models");
+const modelOptions = el("model-options"), modelStatus = el("model-status");
+let displayedProvider = "", customEndpoint = "";
+let modelRequest: AbortController | undefined;
+
+function clearModelList() {
+  modelRequest?.abort();
+  modelRequest = undefined;
+  fetchModelsButton.disabled = false;
+  modelOptions.replaceChildren();
+  modelStatus.textContent = "";
+}
+
+function syncProvider() {
+  const selected = providerSelect.value;
+  const preset = providerSelect.selectedOptions[0]?.dataset.endpoint;
+  endpointInput.value = preset ?? customEndpoint;
+  endpointInput.readOnly = preset !== undefined;
+  if (selected === displayedProvider) return;
+  if (displayedProvider) {
+    modelInput.value = "";
+    keyInput.value = "";
+    clearModelList();
+    el("settings-error").textContent = "";
+  }
+  displayedProvider = selected;
+}
 function spriteStatus(stage?: string) {
   sprite.textContent = stage || (config ? "Sprite enabled · Settings" : "Sprite offline · Settings");
   sprite.classList.toggle("active",!!config);
@@ -90,42 +120,57 @@ input.onkeydown=e=>{
 for(const b of document.querySelectorAll<HTMLButtonElement>("[data-line]"))b.onclick=()=>send(b.dataset.line!);
 el("new").onclick=()=>dialog.showModal();el("cancel").onclick=()=>dialog.close();
 el("restart").onclick=()=>{dialog.close();start();};
-sprite.onclick=()=>{el("settings-error").textContent="";settings.showModal();};
-el<HTMLSelectElement>("provider-select").onchange=e=>{
-  const provider=(e.target as HTMLSelectElement).value as keyof typeof providers;
-  if (provider in providers) el<HTMLInputElement>("endpoint").value=providers[provider];
-  el<HTMLInputElement>("model").value="";
-  el("model-options").replaceChildren();
-  el("model-status").textContent="";
+sprite.onclick=()=>{syncProvider();el("settings-error").textContent="";settings.showModal();};
+providerSelect.addEventListener("input", syncProvider);
+providerSelect.addEventListener("change", syncProvider);
+endpointInput.oninput=()=>{
+  if (providerSelect.value === "custom") customEndpoint = endpointInput.value;
+  clearModelList();
 };
-el("fetch-models").onclick=async()=>{
-  const button=el<HTMLButtonElement>("fetch-models"), status=el("model-status");
-  button.disabled=true;status.textContent="Loading models…";
+keyInput.oninput=clearModelList;
+fetchModelsButton.onclick=async()=>{
+  syncProvider();
+  clearModelList();
+  const request = new AbortController();
+  modelRequest = request;
+  fetchModelsButton.disabled = true;
+  modelStatus.textContent = "Loading models…";
   try {
-    const models=await listModels(el<HTMLInputElement>("endpoint").value.trim(),el<HTMLInputElement>("key").value.trim());
-    const options=el("model-options");options.replaceChildren(...models.map(model=>{
+    const models=await listModels(endpointInput.value.trim(),keyInput.value.trim(),request.signal);
+    if (modelRequest !== request) return;
+    modelOptions.replaceChildren(...models.map(model=>{
       const option=document.createElement("option");option.value=model.id;option.label=model.ownedBy ? model.id+" · "+model.ownedBy : model.id;return option;
     }));
-    status.textContent=models.length+" models loaded. You can still type another model ID.";
-    if (!el<HTMLInputElement>("model").value && models[0]) el<HTMLInputElement>("model").value=models[0].id;
-  } catch(error) {status.textContent=error instanceof Error ? error.message+" Type a model ID manually." : "Could not load models. Type a model ID manually.";}
-  finally {button.disabled=false;}
+    modelStatus.textContent=models.length+" models loaded. You can still type another model ID.";
+    if (!modelInput.value && models[0]) modelInput.value=models[0].id;
+  } catch(error) {
+    if (modelRequest === request)
+      modelStatus.textContent=error instanceof Error ? error.message+" Type a model ID manually." : "Could not load models. Type a model ID manually.";
+  } finally {
+    if (modelRequest === request) {
+      modelRequest = undefined;
+      fetchModelsButton.disabled = false;
+    }
+  }
 };
 el("dismiss").onclick=()=>settings.close();
 el("disconnect").onclick=()=>{
-  config=undefined;el<HTMLInputElement>("key").value="";resetHistory=true;
+  config=undefined;keyInput.value="";resetHistory=true;
+  clearModelList();
   spriteStatus();settings.close();print("Sprite disconnected. Use MUD verbs or !command.");
 };
 el<HTMLFormElement>("provider").onsubmit=e=>{
   e.preventDefault();
+  syncProvider();
   try {
-    const endpoint=completionURL(el<HTMLInputElement>("endpoint").value.trim());
-    const model=el<HTMLInputElement>("model").value.trim();
+    const endpoint=completionURL(endpointInput.value.trim());
+    const model=modelInput.value.trim();
     if (!model) throw Error("Enter the model ID supplied by your provider.");
-    config={endpoint,model,key:el<HTMLInputElement>("key").value.trim()};
+    config={endpoint,model,key:keyInput.value.trim()};
     resetHistory=true;spriteStatus();settings.close();
     print("Sprite enabled. Speak naturally, or use !command to bypass the sprite.");
     input.focus();
   } catch(error) {el("settings-error").textContent=error instanceof Error ? error.message : "Invalid settings";}
 };
+syncProvider();
 start();

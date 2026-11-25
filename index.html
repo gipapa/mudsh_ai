@@ -33,9 +33,11 @@
     <p>Connect a Chat Completions provider. The sprite can act immediately in this expedition. Messages, room details and output for summaries go directly to your provider.</p>
     <form id="provider" autocomplete="off">
       <label>Provider<select id="provider-select">
-        <option value="openai">OpenAI</option><option value="groq">Groq</option><option value="custom">Custom OpenAI-compatible</option>
+        <option value="openai" data-endpoint="https://api.openai.com/v1">OpenAI</option>
+        <option value="groq" data-endpoint="https://api.groq.com/openai/v1">Groq</option>
+        <option value="custom">Custom OpenAI-compatible</option>
       </select></label>
-      <label>API endpoint<input id="endpoint" type="url" required value="https://api.openai.com/v1" spellcheck="false"></label>
+      <label>API endpoint<input id="endpoint" type="url" required readonly value="https://api.openai.com/v1" placeholder="https://your-provider.example/v1" spellcheck="false"></label>
       <div class="model-row"><label>Model ID<input id="model" list="model-options" required placeholder="Fetch models or type an ID" spellcheck="false"></label><button id="fetch-models" type="button">Get models</button></div>
       <datalist id="model-options"></datalist>
       <p id="model-status" role="status"></p>
