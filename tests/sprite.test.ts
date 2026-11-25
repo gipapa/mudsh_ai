@@ -4,6 +4,7 @@ import {createServer} from "node:http";
 import {once} from "node:events";
 import {createSession} from "../dist/session.js";
 import {completionURL, listModels, modelsURL, playTurn} from "../src/sprite.ts";
+import {defaultSpriteOptions} from "../src/sprite-options.ts";
 
 test("accept base and full endpoint URLs",()=>{
   assert.equal(completionURL("https://example.org/api/v1/"),"https://example.org/api/v1/chat/completions");
@@ -73,6 +74,23 @@ test("sprite turns use the configured HTTP provider and the existing expedition"
     assert.equal(failed.offline,true);assert.match(failed.output,/No action ran/);
   }
   assert.deepEqual((await game.survey()).exits,[]);
+
+  const simple = {...config,options:{...defaultSpriteOptions,maxTokens:256,historyTurns:0,
+    roomEntries:1,summarize:false,temperature:0.25,effort:"low" as const,instructions:"Keep it brief."}};
+  const beforeSimple = requests.length;
+  const history = [{role:"user" as const,content:"Old prompt"}];
+  answers.push('{"kind":"shell","value":"echo raw output"}');
+  const raw = await playTurn(createSession(0),"Say something",simple,()=>{},history);
+  assert.equal(raw.output,"raw output\n");
+  assert.equal(requests.length,beforeSimple+1);
+  const request = requests.at(-1).body;
+  assert.equal(request.max_completion_tokens,256);
+  assert.equal(request.reasoning_effort,"low");
+  assert.equal(request.temperature,0.25);
+  assert.equal(request.messages.length,2);
+  assert.match(request.messages[0].content,/Keep it brief/);
+  assert.equal(JSON.parse(request.messages[1].content).room.exits.length,1);
+  assert.deepEqual(history,[]);
 });
 
 test("model listing reads the OpenAI-compatible data array",async t=>{

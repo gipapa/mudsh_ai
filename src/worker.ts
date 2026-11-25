@@ -1,5 +1,6 @@
 import { createSession } from "./session.ts";
-import { playTurn, type SpriteHistory } from "./sprite.ts";
+import { playTurn, type Progress, type SpriteHistory } from "./sprite.ts";
+import { route } from "./world.ts";
 let game: ReturnType<typeof createSession>;
 let history: SpriteHistory = [];
 self.onmessage = async ({data}) => {
@@ -9,8 +10,12 @@ self.onmessage = async ({data}) => {
     if ("seed" in data) game = createSession(data.seed);
     else {
       if (data.resetHistory) history = [];
-      const result = await playTurn(game,data.line,data.config,
-        (stage,command)=>self.postMessage({stage,command}),history);
+      const progress: Progress = (stage,text)=>self.postMessage({stage,text});
+      const advanced = data.config?.options?.mode === "advanced" && route(data.line,true) === "sprite";
+      if (advanced) progress("thinking");
+      const result = advanced
+        ? await (await import("./sprite-agent.ts")).playAdvancedTurn(game,data.line,data.config,progress,history)
+        : await playTurn(game,data.line,data.config,progress,history);
       output = result.output;
       offline = !!result.offline;
     }

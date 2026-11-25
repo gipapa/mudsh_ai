@@ -9,6 +9,12 @@
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "probe": "node --experimental-strip-types scripts/probe.ts"
   },
-  "dependencies": { "just-bash": "3.6.0" },
-  "devDependencies": { "esbuild": "0.25.12" }
+  "dependencies": {
+    "@earendil-works/pi-agent-core": "0.84.4",
+    "@earendil-works/pi-ai": "0.84.4",
+    "just-bash": "3.6.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12"
+  }
 }

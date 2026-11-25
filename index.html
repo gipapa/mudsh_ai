@@ -29,9 +29,14 @@
   <dialog><h2>Start a new expedition?</h2><p>This will replace the current map, files and log.</p>
     <div><button id="cancel">Keep exploring</button> <button id="restart">Start expedition</button></div></dialog>
   <dialog id="settings" aria-labelledby="settings-title">
-    <h2 id="settings-title">Your sprite companion</h2>
-    <p>Connect a Chat Completions provider. The sprite can act immediately in this expedition. Messages, room details and output for summaries go directly to your provider.</p>
+    <h2 id="settings-title" tabindex="-1" autofocus>Your sprite companion</h2>
     <form id="provider" autocomplete="off">
+      <div class="settings-tabs" role="tablist" aria-label="Sprite settings">
+        <button type="button" role="tab" id="connection-tab" aria-controls="connection-panel" aria-selected="true">Connection</button>
+        <button type="button" role="tab" id="mode-tab" aria-controls="mode-panel" aria-selected="false" tabindex="-1">Sprite mode</button>
+      </div>
+      <section id="connection-panel" class="settings-panel" role="tabpanel" aria-labelledby="connection-tab">
+      <p>Connect a Chat Completions provider. Messages, room details and relevant output go directly to your provider.</p>
       <label>Provider<select id="provider-select">
         <option value="openai" data-endpoint="https://api.openai.com/v1">OpenAI</option>
         <option value="groq" data-endpoint="https://api.groq.com/openai/v1">Groq</option>
@@ -49,6 +54,26 @@
       <p id="model-status" role="status"></p>
       <p id="model-error" role="alert"></p>
       <label>API key (optional)<input id="key" type="password" autocomplete="off" placeholder="Kept in this tab only"></label>
+      </section>
+      <section id="mode-panel" class="settings-panel" role="tabpanel" aria-labelledby="mode-tab" hidden>
+        <label>Sprite mode<select id="sprite-mode">
+          <option value="simple">Simple</option>
+          <option value="advanced">Advanced (Pi Core)</option>
+        </select></label>
+        <p id="mode-description">Choose one action per request, with an optional follow-up to summarize shell output.</p>
+        <div class="mode-fields" id="common-options"></div>
+        <div class="mode-fields" id="simple-options">
+          <label class="check-setting"><input id="summarize" type="checkbox" checked> Summarize shell output</label>
+        </div>
+        <div class="mode-fields" id="advanced-options" hidden></div>
+        <label>Temperature <input id="temperature" type="number" min="0" max="2" step="0.01" placeholder="Provider default"></label>
+        <label>Reasoning effort<select id="reasoning-effort">
+          <option value="">Provider default</option><option value="none">None</option>
+          <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
+        </select></label>
+        <small>Set temperature or reasoning effort only if your model supports the setting.</small>
+        <label>Additional sprite instructions<textarea id="sprite-instructions" rows="3" maxlength="1000"></textarea></label>
+      </section>
       <p id="settings-error" role="alert"></p>
       <div><button type="submit">Enable sprite</button> <button id="disconnect" type="button">Disconnect</button> <button id="dismiss" type="button">Cancel</button></div>
     </form>

@@ -3,7 +3,7 @@ import { Expedition, initialFiles, startPath } from "./world.ts";
 
 export function createSession(seed: number) {
   const bash = new Bash({files: initialFiles(seed), cwd:startPath, env:{HOME:startPath},
-    commands:["ls","cat","pwd","mkdir","touch","echo","printf","cp","mv","rm","rmdir","head","tail","wc","sort","uniq","grep","find","date","tr","seq","test"],
+    commands:["ls","cat","pwd","mkdir","touch","echo","printf","cp","mv","rm","rmdir","head","tail","wc","sort","uniq","grep","find","date","tr","seq"],
     executionLimits:{maxCommandCount:1000,maxLoopIterations:1000,maxExecutionTimeMs:3500,
       maxOutputSize:65536,maxSourceBytes:8192,maxStringLength:262144,maxLiveBytes:8388608}});
   const fs = bash.fs;

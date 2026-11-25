@@ -4,6 +4,11 @@ The browser interpreter is just-bash 3.6.0, Copyright Vercel Inc.,
 Apache License 2.0. The published demo includes its license at
 licenses/just-bash.txt and retains bundled notices in the JavaScript.
 
+Advanced sprite mode uses the Pi Agent Core, Pi AI and Pi Telemetry 0.84.4
+packages under the MIT License. Their license is at licenses/pi.txt.
+The published demo includes license texts for OpenAI's SDK, TypeBox,
+ignore, partial-json and YAML under licenses/.
+
 scripts/build.mjs adapts the cwd patch from gipapa/agent-go-round
 (MIT, Copyright (c) 2026). Permission and warranty terms are in LICENSE.
 Our build verifies the original browser artifact and modifies its public

@@ -30,5 +30,12 @@ await build({entryPoints: ["src/app.ts","src/worker.ts","src/session.ts"], outdi
   chunkNames:"chunks/[name]-[hash]", alias:{"node:zlib":resolve("src/zlib.ts")}, plugins:[cwdResult]});
 for (const file of ["index.html","style.css","LICENSE"]) await copyFile(file, "dist/" + file);
 await copyFile("node_modules/just-bash/LICENSE","dist/licenses/just-bash.txt");
+await copyFile("licenses/pi.txt","dist/licenses/pi.txt");
+for (const [name, file] of [
+  ["openai","LICENSE"], ["typebox","license"], ["ignore","LICENSE-MIT"],
+  ["partial-json","LICENSE"], ["yaml","LICENSE"],
+]) {
+  await copyFile(`node_modules/${name}/${file}`,`dist/licenses/${name}.txt`);
+}
 await copyFile("THIRD_PARTY.md","dist/licenses/credits.txt");
 await writeFile("dist/.nojekyll","");

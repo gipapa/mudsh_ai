@@ -2,6 +2,7 @@ import { scenes } from "./en.ts";
 import type { Room } from "./world.ts";
 import { drawRegion } from "./panorama.ts";
 import { completionURL, listModels, type SpriteConfig } from "./sprite.ts";
+import { defaultSpriteOptions, spriteNumbers, type SpriteNumber, type SpriteOptions } from "./sprite-options.ts";
 
 const el = <T extends HTMLElement = HTMLElement>(id:string) => document.getElementById(id) as T;
 const input = el<HTMLInputElement>("command"), log = el("log"), dialog = document.querySelector("dialog")!;
@@ -9,6 +10,9 @@ let worker: Worker, busy = true, ended = false, timer = 0;
 let history: string[] = [], cursor = 0;
 let config: SpriteConfig | undefined, resetHistory = false;
 const settings = el<HTMLDialogElement>("settings"), sprite = el<HTMLButtonElement>("sprite");
+const settingsForm = el<HTMLFormElement>("provider");
+const modeInput = el<HTMLSelectElement>("sprite-mode");
+const tabs = [el<HTMLButtonElement>("connection-tab"),el<HTMLButtonElement>("mode-tab")];
 const providerSelect = el<HTMLSelectElement>("provider-select");
 const endpointInput = el<HTMLInputElement>("endpoint");
 const modelSelect = el<HTMLSelectElement>("model-select");
@@ -19,6 +23,65 @@ const modelOptions = el("model-options"), modelStatus = el("model-status");
 const modelError = el("model-error");
 let displayedProvider = "", customEndpoint = "";
 let modelRequest: AbortController | undefined;
+
+function selectTab(selected: HTMLButtonElement) {
+  for (const tab of tabs) {
+    const active = tab === selected;
+    tab.setAttribute("aria-selected",String(active));
+    tab.tabIndex = active ? 0 : -1;
+    el(tab.getAttribute("aria-controls")!).hidden = !active;
+  }
+}
+
+const numberInputs = new Map<SpriteNumber,HTMLInputElement>();
+function addNumberSettings(container: string, names: readonly SpriteNumber[]) {
+  for (const name of names) {
+    const spec = spriteNumbers[name];
+    const label = document.createElement("label");
+    const field = document.createElement("input");
+    field.type = "number";
+    field.min = String(spec.min);
+    field.max = String(spec.max);
+    field.value = String(defaultSpriteOptions[name]);
+    field.required = true;
+    label.append(spec.label,field);
+    if ("help" in spec) {
+      const help = document.createElement("small");
+      help.textContent = spec.help;
+      label.append(help);
+    }
+    el(container).append(label);
+    numberInputs.set(name,field);
+  }
+}
+addNumberSettings("common-options",["maxTokens","historyTurns","historyChars","roomEntries","timeoutSeconds"]);
+addNumberSettings("simple-options",["stdoutChars","stderrChars"]);
+addNumberSettings("advanced-options",["maxSteps","deadlineSeconds","toolResultChars"]);
+
+function syncMode() {
+  const advanced = modeInput.value === "advanced";
+  for (const [id, visible] of [["simple-options",!advanced],["advanced-options",advanced]] as const) {
+    el(id).hidden = !visible;
+    for (const field of el(id).querySelectorAll("input")) field.disabled = !visible;
+  }
+  el("mode-description").textContent = advanced
+    ? "Pi Core uses tool results to work toward your goal. Choose a model that supports streaming tool calls."
+    : "Choose one action per request, with an optional follow-up to summarize shell output.";
+}
+
+function readSpriteOptions(): SpriteOptions {
+  const options = {...defaultSpriteOptions};
+  for (const [name, field] of numberInputs) {
+    if (!field.disabled) options[name] = field.valueAsNumber;
+  }
+  const temperature = el<HTMLInputElement>("temperature");
+  options.temperature = temperature.value ? temperature.valueAsNumber : undefined;
+  options.effort = (el<HTMLSelectElement>("reasoning-effort").value || undefined) as SpriteOptions["effort"];
+  options.mode = modeInput.value === "advanced" ? "advanced" : "simple";
+  options.summarize = el<HTMLInputElement>("summarize").checked;
+  options.instructions = el<HTMLTextAreaElement>("sprite-instructions").value.trim();
+  return options;
+}
 
 function syncModelInput() {
   const manual = modelSelect.value === "";
@@ -108,10 +171,12 @@ function start(){
   let first=true;
   worker.onmessage=({data})=>{
     if (data.stage) {
+      if (data.stage === "output") {print(data.text);return;}
       const executing = data.stage === "executing";
-      watchdog(executing ? 10000 : 40000);
+      const timeout = config?.options?.timeoutSeconds ?? defaultSpriteOptions.timeoutSeconds;
+      watchdog(executing ? 10000 : (timeout + 15) * 1000);
       spriteStatus(executing ? "Sprite acting…" : data.stage === "thinking" ? "Sprite listening…" : "Sprite describing…");
-      if (data.command) print("Sprite ❯ "+data.command,"typed");
+      if (executing && data.text) print("Sprite ❯ "+data.text,"typed");
       return;
     }
     if (data.offline) {config=undefined;resetHistory=true;}
@@ -132,7 +197,27 @@ input.onkeydown=e=>{
 for(const b of document.querySelectorAll<HTMLButtonElement>("[data-line]"))b.onclick=()=>send(b.dataset.line!);
 el("new").onclick=()=>dialog.showModal();el("cancel").onclick=()=>dialog.close();
 el("restart").onclick=()=>{dialog.close();start();};
-sprite.onclick=()=>{syncProvider();el("settings-error").textContent="";settings.showModal();};
+sprite.onclick=()=>{
+  syncProvider();
+  el("settings-error").textContent="";
+  settings.showModal();
+  el("settings-title").focus({preventScroll:true});
+};
+for (const tab of tabs) {
+  tab.onclick=()=>selectTab(tab);
+  tab.onkeydown=event=>{
+    if (!["ArrowLeft","ArrowRight","Home","End"].includes(event.key)) return;
+    event.preventDefault();
+    const target = event.key === "Home" ? tabs[0] : event.key === "End" ? tabs[1] : tabs[1 - tabs.indexOf(tab)];
+    selectTab(target);
+    target.focus();
+  };
+}
+modeInput.onchange=syncMode;
+settingsForm.addEventListener("invalid",event=>{
+  const tab = tabs.find(item => el(item.getAttribute("aria-controls")!).contains(event.target as Node));
+  if (tab) selectTab(tab);
+},true);
 providerSelect.addEventListener("input", syncProvider);
 providerSelect.addEventListener("change", syncProvider);
 endpointInput.oninput=()=>{
@@ -178,18 +263,22 @@ el("disconnect").onclick=()=>{
   clearModelList();
   spriteStatus();settings.close();print("Sprite disconnected. Use MUD verbs or !command.");
 };
-el<HTMLFormElement>("provider").onsubmit=e=>{
+settingsForm.onsubmit=e=>{
   e.preventDefault();
   syncProvider();
   try {
     const endpoint=completionURL(endpointInput.value.trim());
     const model=modelSelect.value || modelInput.value.trim();
     if (!model) throw Error("Enter the model ID supplied by your provider.");
-    config={endpoint,model,key:keyInput.value.trim()};
+    config={endpoint,model,key:keyInput.value.trim(),options:readSpriteOptions()};
     resetHistory=true;spriteStatus();settings.close();
     print("Sprite enabled. Speak naturally, or use !command to bypass the sprite.");
     input.focus();
-  } catch(error) {el("settings-error").textContent=error instanceof Error ? error.message : "Invalid settings";}
+  } catch(error) {
+    selectTab(tabs[0]);
+    el("settings-error").textContent=error instanceof Error ? error.message : "Invalid settings";
+  }
 };
 syncProvider();
+syncMode();
 start();
