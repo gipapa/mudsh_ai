@@ -1,6 +1,7 @@
 import { route, type Expedition } from "./world.ts";
 
 export interface SpriteConfig { endpoint: string; model: string; key: string }
+export interface ModelInfo { id: string; ownedBy?: string; active?: boolean }
 type Message = {role: "system" | "user" | "assistant"; content: string};
 type Action = {kind: "reply" | "mud" | "shell"; value: string; raw?: boolean};
 export type Progress = (stage: "thinking" | "executing" | "summarizing", command?: string) => void;
@@ -15,6 +16,33 @@ export function completionURL(base: string) {
   const path = url.pathname.replace(/\/+$/, "");
   url.pathname = path.endsWith("/chat/completions") ? path : path + "/chat/completions";
   return url.href;
+}
+
+export function modelsURL(base: string) {
+  const url = new URL(base);
+  const local = ["localhost","127.0.0.1","[::1]"].includes(url.hostname);
+  if (url.protocol !== "https:" && !(local && url.protocol === "http:"))
+    throw Error("Use HTTPS or a loopback HTTP endpoint.");
+  if (url.username || url.password || url.search || url.hash)
+    throw Error("Enter a base URL without credentials, query or fragment.");
+  const path = url.pathname.replace(/\/chat\/completions\/?$/, "").replace(/\/+$/, "");
+  url.pathname = path + "/models";
+  return url.href;
+}
+
+export async function listModels(endpoint: string, key: string): Promise<ModelInfo[]> {
+  const res = await fetch(modelsURL(endpoint), {
+    method:"GET", redirect:"error", credentials:"omit", referrerPolicy:"no-referrer",
+    signal:AbortSignal.timeout(15000),
+    headers:{Accept:"application/json", ...(key ? {Authorization:"Bearer "+key} : {})}
+  });
+  if (!res.ok) throw Error("Provider returned HTTP " + res.status);
+  const body = await res.json();
+  if (!Array.isArray(body?.data)) throw Error("Provider returned an invalid model list");
+  return body.data.filter((model: unknown): model is {id: string; owned_by?: string; active?: boolean} =>
+    !!model && typeof model === "object" && typeof (model as {id?: unknown}).id === "string")
+    .map(model => ({id:model.id, ownedBy:model.owned_by, active:model.active}))
+    .sort((a,b) => a.id.localeCompare(b.id));
 }
 
 async function complete(config: SpriteConfig, messages: Message[]) {

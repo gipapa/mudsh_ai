@@ -1,7 +1,7 @@
 import { scenes } from "./en.ts";
 import type { Room } from "./world.ts";
 import { drawRegion } from "./panorama.ts";
-import { completionURL, type SpriteConfig } from "./sprite.ts";
+import { completionURL, listModels, type SpriteConfig } from "./sprite.ts";
 
 const el = <T extends HTMLElement = HTMLElement>(id:string) => document.getElementById(id) as T;
 const input = el<HTMLInputElement>("command"), log = el("log"), dialog = document.querySelector("dialog")!;
@@ -9,6 +9,7 @@ let worker: Worker, busy = true, ended = false, timer = 0;
 let history: string[] = [], cursor = 0;
 let config: SpriteConfig | undefined, resetHistory = false;
 const settings = el<HTMLDialogElement>("settings"), sprite = el<HTMLButtonElement>("sprite");
+const providers = {openai:"https://api.openai.com/v1",groq:"https://api.groq.com/openai/v1"} as const;
 function spriteStatus(stage?: string) {
   sprite.textContent = stage || (config ? "Sprite enabled · Settings" : "Sprite offline · Settings");
   sprite.classList.toggle("active",!!config);
@@ -90,6 +91,26 @@ for(const b of document.querySelectorAll<HTMLButtonElement>("[data-line]"))b.onc
 el("new").onclick=()=>dialog.showModal();el("cancel").onclick=()=>dialog.close();
 el("restart").onclick=()=>{dialog.close();start();};
 sprite.onclick=()=>{el("settings-error").textContent="";settings.showModal();};
+el<HTMLSelectElement>("provider-select").onchange=e=>{
+  const provider=(e.target as HTMLSelectElement).value as keyof typeof providers;
+  if (provider in providers) el<HTMLInputElement>("endpoint").value=providers[provider];
+  el<HTMLInputElement>("model").value="";
+  el("model-options").replaceChildren();
+  el("model-status").textContent="";
+};
+el("fetch-models").onclick=async()=>{
+  const button=el<HTMLButtonElement>("fetch-models"), status=el("model-status");
+  button.disabled=true;status.textContent="Loading models…";
+  try {
+    const models=await listModels(el<HTMLInputElement>("endpoint").value.trim(),el<HTMLInputElement>("key").value.trim());
+    const options=el("model-options");options.replaceChildren(...models.map(model=>{
+      const option=document.createElement("option");option.value=model.id;option.label=model.ownedBy ? model.id+" · "+model.ownedBy : model.id;return option;
+    }));
+    status.textContent=models.length+" models loaded. You can still type another model ID.";
+    if (!el<HTMLInputElement>("model").value && models[0]) el<HTMLInputElement>("model").value=models[0].id;
+  } catch(error) {status.textContent=error instanceof Error ? error.message+" Type a model ID manually." : "Could not load models. Type a model ID manually.";}
+  finally {button.disabled=false;}
+};
 el("dismiss").onclick=()=>settings.close();
 el("disconnect").onclick=()=>{
   config=undefined;el<HTMLInputElement>("key").value="";resetHistory=true;
