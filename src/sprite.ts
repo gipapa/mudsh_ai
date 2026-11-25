@@ -30,6 +30,35 @@ export function modelsURL(base: string) {
   return url.href;
 }
 
+const quotaCodes = new Set([
+  "insufficient_quota",
+  "credit_balance_exhausted",
+  "organization_spend_limit_exceeded",
+  "project_spend_limit_exceeded",
+  "organization_usage_limit_exceeded",
+]);
+
+async function describe429(response: Response) {
+  const body = await response.json().catch(() => undefined);
+  const {code, type} = body?.error ?? {};
+  if (quotaCodes.has(code) || quotaCodes.has(type)) {
+    return "Provider API quota or credits exhausted (HTTP 429). Check API billing and usage limits before retrying";
+  }
+
+  const retryAfter = response.headers.get("Retry-After")?.trim() ?? "";
+  const seconds = /^\d+$/.test(retryAfter)
+    ? Number(retryAfter)
+    : Math.ceil((Date.parse(retryAfter) - Date.now()) / 1000);
+  if (Number.isSafeInteger(seconds) && seconds > 0) {
+    const unit = seconds === 1 ? "second" : "seconds";
+    return `Provider rate limit reached (HTTP 429). Try again in ${seconds} ${unit}`;
+  }
+  if (code === "rate_limit_exceeded" || code === "slow_down" || type === "rate_limit_error") {
+    return "Provider rate limit reached (HTTP 429). Wait before retrying and check the provider's rate limits";
+  }
+  return "Provider denied the request (HTTP 429). Check API quota and usage limits, or wait before retrying if rate limited";
+}
+
 export async function listModels(endpoint: string, key: string, signal?: AbortSignal): Promise<ModelInfo[]> {
   const url = modelsURL(endpoint);
   const timeout = AbortSignal.timeout(15000);
@@ -42,6 +71,7 @@ export async function listModels(endpoint: string, key: string, signal?: AbortSi
       headers:{Accept:"application/json", ...(key ? {Authorization:"Bearer "+key} : {})}
     });
     if (res.status === 401 || res.status === 403) throw Error(`Check the API key (HTTP ${res.status}).`);
+    if (res.status === 429) throw Error((await describe429(res)) + ".");
     if (!res.ok) throw Error(`Provider returned HTTP ${res.status}.`);
     body = await res.json();
   } catch (error) {
@@ -66,6 +96,7 @@ async function complete(config: SpriteConfig, messages: Message[]) {
     headers:{"Content-Type":"application/json", ...(config.key ? {Authorization:"Bearer "+config.key} : {})},
     body:JSON.stringify({model:config.model, messages, stream:false})
   });
+  if (res.status === 429) throw Error(await describe429(res));
   if (!res.ok) throw Error("Provider returned HTTP " + res.status);
   const choice = (await res.json()).choices?.[0];
   if (choice?.finish_reason && choice.finish_reason !== "stop") throw Error("Incomplete model response");

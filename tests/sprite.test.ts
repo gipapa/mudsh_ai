@@ -15,12 +15,18 @@ test("accept base and full endpoint URLs",()=>{
 
 test("sprite turns use the configured HTTP provider and the existing expedition",async t=>{
   const requests = [];
-  const answers: (string | number)[] = [];
+  const answers: (string | number | {code:string; retryAfter?:string})[] = [];
   const server=createServer(async(req,res)=>{
     let text="";
     for await (const chunk of req) text+=chunk;
     requests.push({url:req.url,auth:req.headers.authorization,body:JSON.parse(text)});
     const answer=answers.shift();
+    if (typeof answer === "object") {
+      if (answer.retryAfter) res.setHeader("Retry-After",answer.retryAfter);
+      res.writeHead(429,{"Content-Type":"application/json"});
+      res.end(JSON.stringify({error:{code:answer.code,message:"Provider detail not for display"}}));
+      return;
+    }
     if(typeof answer !== "string"){res.writeHead(answer ?? 500).end();return;}
     res.setHeader("Content-Type","application/json");
     res.end(JSON.stringify({choices:[{message:{role:"assistant",content:answer},finish_reason:"stop"}]}));
@@ -51,6 +57,16 @@ test("sprite turns use the configured HTTP provider and the existing expedition"
   assert.equal(failedSummary.offline,true);
   assert.match(failedSummary.output,/Command finished \(exit 0\)\.\nonce\n$/);
   assert.equal(await game.run("read record"),"once\n");
+  const beforeLimit = requests.length;
+  answers.push({code:"rate_limit_exceeded",retryAfter:"17"}, {code:"insufficient_quota",retryAfter:"30"}, 429);
+  for (const message of [/Try again in 17 seconds/, /Check API billing and usage limits/, /Check API quota and usage limits/]) {
+    const result = await run("make a room");
+    assert.equal(result.offline,true);
+    assert.match(result.output,message);
+    assert.match(result.output,/No action ran/);
+    assert.doesNotMatch(result.output,/Provider detail not for display/);
+  }
+  assert.equal(requests.length,beforeLimit+3);
   for(const answer of [401,"unstructured text",'{"kind":"mud","value":"!mkdir unexpected"}']){
     answers.push(answer);
     const failed=await run("make a room");
@@ -60,13 +76,21 @@ test("sprite turns use the configured HTTP provider and the existing expedition"
 });
 
 test("model listing reads the OpenAI-compatible data array",async t=>{
+  let limited = false;
   const server=createServer((req,res)=>{
     assert.equal(req.url,"/v1/models");
     assert.equal(req.headers.authorization,"Bearer list-key");
+    if (limited) {
+      res.writeHead(429,{"Retry-After":"1"}).end();
+      return;
+    }
     res.setHeader("Content-Type","application/json");
     res.end(JSON.stringify({object:"list",data:[{id:"zeta",owned_by:"Z"},{id:"alpha",owned_by:"A"},{id:12}]}));
   }).listen(0,"127.0.0.1");
   await once(server,"listening");t.after(()=>server.close());
-  const models=await listModels("http://127.0.0.1:"+server.address().port+"/v1/chat/completions","list-key");
+  const endpoint = "http://127.0.0.1:"+server.address().port+"/v1/chat/completions";
+  const models=await listModels(endpoint,"list-key");
   assert.deepEqual(models.map(model=>model.id),["alpha","zeta"]);
+  limited = true;
+  await assert.rejects(listModels(endpoint,"list-key"),/Try again in 1 second\./);
 });
