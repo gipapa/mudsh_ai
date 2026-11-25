@@ -2,7 +2,8 @@ import { runAgentLoop, type AgentTool, type StreamFn } from "@earendil-works/pi-
 import { Type, type Model } from "@earendil-works/pi-ai";
 import { stream } from "@earendil-works/pi-ai/api/openai-completions";
 import {
-  completionURL, describe429, recentHistory, rememberTurn, roomContext, runSpriteShell, spriteIdentity, spriteShellInstructions,
+  completionURL, isRecoverableLimit, providerLimitError, recentHistory, rememberTurn,
+  roomContext, runSpriteShell, spriteIdentity, spriteShellInstructions,
   type Progress, type SpriteConfig, type SpriteHistory, type SpriteTurnResult,
 } from "./sprite.ts";
 import { defaultSpriteOptions } from "./sprite-options.ts";
@@ -31,7 +32,8 @@ export async function playAdvancedTurn(game: Expedition, line: string, config: S
     compat: { supportsDeveloperRole: false, maxTokensField: "max_completion_tokens" },
   };
   let actions = 0, requests = 0;
-  let reachedLimit = false, providerFailure = "", lastOutput = "";
+  let reachedLimit = false, lastOutput = "";
+  let providerFailure: Error | undefined;
   const result = (text: string) => ({ content: [{
     type: "text" as const,
     text: text.length <= options.toolResultChars ? text : text.slice(0,options.toolResultChars) + "\n[Output truncated]",
@@ -54,6 +56,7 @@ export async function playAdvancedTurn(game: Expedition, line: string, config: S
   };
   const streamFn: StreamFn = (_model, context, request) => {
     requests++;
+    providerFailure = undefined;
     progress("thinking");
     const requestSignal = AbortSignal.any([deadline, AbortSignal.timeout(options.timeoutSeconds * 1000)]);
     return stream(model,context,{
@@ -69,11 +72,11 @@ export async function playAdvancedTurn(game: Expedition, line: string, config: S
         if (!config.key) headers.delete("Authorization");
         try {
           const response = await fetch(resource,{...init,headers,credentials:"omit",redirect:"error"});
-          if (response.status === 429) providerFailure = (await describe429(response.clone())) + ".";
-          else if (!response.ok) providerFailure = `Provider returned HTTP ${response.status}.`;
+          if (response.status === 429 || response.status === 413) providerFailure = await providerLimitError(response.clone());
+          else if (!response.ok) providerFailure = Error(`Provider returned HTTP ${response.status}`);
           return response;
         } catch (error) {
-          providerFailure = requestSignal.aborted ? "The model request timed out." : "Could not reach the provider.";
+          providerFailure = Error(requestSignal.aborted ? "The model request timed out" : "Could not reach the provider");
           throw error;
         }
       },
@@ -115,7 +118,7 @@ export async function playAdvancedTurn(game: Expedition, line: string, config: S
     );
     const last = messages.findLast(message => message.role === "assistant");
     if (last?.stopReason === "error" || last?.stopReason === "aborted")
-      return failure(deadline.aborted ? "Goal timed out." : providerFailure || "The provider could not complete the goal.",true);
+      return requestFailure("The provider could not complete the goal");
     if (game.ended) return {output:"Expedition closed."};
     if (deadline.aborted) return failure("Goal timed out.");
     if (last?.stopReason === "length") return failure("The response reached the completion token limit.");
@@ -125,7 +128,12 @@ export async function playAdvancedTurn(game: Expedition, line: string, config: S
     rememberTurn(history,options,line,text);
     return {output:text};
   } catch {
-    return failure(deadline.aborted ? "Goal timed out." : providerFailure || "The sprite could not finish the goal.",true);
+    return requestFailure("The sprite could not finish the goal");
+  }
+
+  function requestFailure(fallback: string) {
+    if (deadline.aborted) return failure("Goal timed out.",true);
+    return failure((providerFailure?.message ?? fallback) + ".",!isRecoverableLimit(providerFailure));
   }
 
   function failure(reason: string, offline = false) {

@@ -16,7 +16,7 @@ Use the **Sprite mode** tab to name your sprite and choose how it works. Its nam
 
 **Advanced (Pi Core)** uses a model that supports streaming tool calls. The sprite runs shell scripts directly, inspects their results, and keeps working toward a goal. Try “find the letter about the bell and take me to its room”. You can set the action limit, goal timeout and tool-result size. If the sprite runs out of steps or a request fails, it reports the interruption and keeps actions that already completed.
 
-Both modes use the same virtual filesystem. Use `!` or `！` to run a script directly. If the provider fails, play continues offline in the current room. Re-enable the sprite in Settings to reconnect.
+Both modes use the same virtual filesystem. Use `!` or `！` to run a script directly. Rate limits and oversized requests stop the current turn while keeping the sprite enabled. Completed commands stay in effect. If a provider error takes the sprite offline, re-enable it in Settings to reconnect.
 
 ## Development
 

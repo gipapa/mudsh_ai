@@ -40,12 +40,29 @@ const quotaCodes = new Set([
   "organization_usage_limit_exceeded",
 ]);
 
-export async function describe429(response: Response) {
-  const body = await response.json().catch(() => undefined);
-  const {code, type} = body?.error ?? {};
-  if (quotaCodes.has(code) || quotaCodes.has(type)) {
-    return "Provider API quota or credits exhausted (HTTP 429). Check API billing and usage limits before retrying";
+class ProviderLimitError extends Error {
+  readonly quotaExhausted: boolean;
+
+  constructor(message: string, quotaExhausted = false) {
+    super(message);
+    this.quotaExhausted = quotaExhausted;
   }
+}
+
+export function isRecoverableLimit(error: unknown) {
+  return error instanceof ProviderLimitError && !error.quotaExhausted;
+}
+
+export async function providerLimitError(response: Response) {
+  const tooLarge = `Request is too large for the provider (HTTP ${response.status}). Shorten the input or reduce the history and output limits in Sprite mode`;
+  if (response.status === 413) return new ProviderLimitError(tooLarge);
+
+  const body = await response.json().catch(() => undefined);
+  const {code, type, message} = body?.error ?? {};
+  if (quotaCodes.has(code) || quotaCodes.has(type)) {
+    return new ProviderLimitError("Provider API quota or credits exhausted (HTTP 429). Check API billing and usage limits before retrying",true);
+  }
+  if (typeof message === "string" && /\brequest too large\b/i.test(message)) return new ProviderLimitError(tooLarge);
 
   const retryAfter = response.headers.get("Retry-After")?.trim() ?? "";
   const seconds = /^\d+$/.test(retryAfter)
@@ -53,12 +70,12 @@ export async function describe429(response: Response) {
     : Math.ceil((Date.parse(retryAfter) - Date.now()) / 1000);
   if (Number.isSafeInteger(seconds) && seconds > 0) {
     const unit = seconds === 1 ? "second" : "seconds";
-    return `Provider rate limit reached (HTTP 429). Try again in ${seconds} ${unit}`;
+    return new ProviderLimitError(`Provider rate limit reached (HTTP 429). Try again in ${seconds} ${unit}`);
   }
   if (code === "rate_limit_exceeded" || code === "slow_down" || type === "rate_limit_error") {
-    return "Provider rate limit reached (HTTP 429). Wait before retrying and check the provider's rate limits";
+    return new ProviderLimitError("Provider rate limit reached (HTTP 429). Wait before retrying and check the provider's rate limits");
   }
-  return "Provider denied the request (HTTP 429). Check API quota and usage limits, or wait before retrying if rate limited";
+  return new ProviderLimitError("Provider denied the request (HTTP 429). Check API quota and usage limits, or wait before retrying if rate limited");
 }
 
 export async function listModels(endpoint: string, key: string, signal?: AbortSignal): Promise<ModelInfo[]> {
@@ -73,7 +90,7 @@ export async function listModels(endpoint: string, key: string, signal?: AbortSi
       headers:{Accept:"application/json", ...(key ? {Authorization:"Bearer "+key} : {})}
     });
     if (res.status === 401 || res.status === 403) throw Error(`Check the API key (HTTP ${res.status}).`);
-    if (res.status === 429) throw Error((await describe429(res)) + ".");
+    if (res.status === 429 || res.status === 413) throw Error((await providerLimitError(res)).message + ".");
     if (!res.ok) throw Error(`Provider returned HTTP ${res.status}.`);
     body = await res.json();
   } catch (error) {
@@ -100,7 +117,7 @@ async function complete(config: SpriteConfig, messages: Message[]) {
     body:JSON.stringify({model:config.model, messages, stream:false, ...sampling(options),
       ...(options.maxTokens > 0 ? {max_completion_tokens:options.maxTokens} : {})})
   });
-  if (res.status === 429) throw Error(await describe429(res));
+  if (res.status === 429 || res.status === 413) throw await providerLimitError(res);
   if (!res.ok) throw Error("Provider returned HTTP " + res.status);
   const choice = (await res.json()).choices?.[0];
   if (choice?.finish_reason === "length") throw Error("The response reached the completion token limit");
@@ -179,6 +196,7 @@ export async function playTurn(game: Expedition, line: string, config: SpriteCon
       {role:"user",content:JSON.stringify({request:line,region:game.scene.name,room})}
     ]));
   } catch (e) {
+    if (isRecoverableLimit(e)) return {offline:false,output:problem(e) + ". No action ran."};
     return {offline:true,output:problem(e) + `. ${options.name} is offline. No action ran. Use help or !command.`};
   }
   function remember(output: string) {
@@ -199,6 +217,9 @@ export async function playTurn(game: Expedition, line: string, config: SpriteCon
     ]);
     return remember(output);
   } catch (e) {
+    if (isRecoverableLimit(e)) {
+      return {offline:false,...remember(problem(e) + `. Summary unavailable. Command finished (exit ${result.exitCode}).\n` + raw)};
+    }
     return {offline:true,output:problem(e)+`. ${options.name} is offline. Command finished (exit ${result.exitCode}).\n`+raw};
   }
 }

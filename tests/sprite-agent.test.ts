@@ -69,9 +69,18 @@ test("Pi uses tool results to continue a goal and stops after action limits or e
 
   replies.push({name:"shell",args:{script:"echo again >> record; cat record"}},429);
   const failed = await run();
-  assert.equal(failed.offline,true);
+  assert.equal(failed.offline,false);
   assert.match(failed.output,/Try again in 17 seconds/);
   assert.match(failed.output,/Completed actions remain/);
   assert.equal(await game.run("read record"),"once\nagain\n");
   assert.equal(requests.length,7);
+  replies.push(413);
+  const tooLarge = await run();
+  assert.equal(tooLarge.offline,false);
+  assert.match(tooLarge.output,/Shorten the input/);
+  assert.match(tooLarge.output,/No action ran/);
+  replies.push("Still here.");
+  assert.equal((await run()).output,"Still here.");
+  assert.ok(requests.at(-1).body.messages.some(message=>message.content === "I found the letter and entered the tower."));
+  assert.equal(requests.length,9);
 });

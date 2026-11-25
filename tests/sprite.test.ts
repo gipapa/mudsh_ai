@@ -37,7 +37,8 @@ test("sprite turns use the configured HTTP provider and the existing expedition"
   const config={endpoint:"http://127.0.0.1:"+server.address().port+"/v1",model:"fixture",key:"demo-only"};
   const game=createSession(0);
   const commands:string[]=[];
-  const run=(line:string)=>playTurn(game,line,config,(_,command)=>{if(command)commands.push(command);});
+  const recent = [];
+  const run=(line:string)=>playTurn(game,line,config,(_,command)=>{if(command)commands.push(command);},recent);
   assert.equal((await run("！pwd")).output,"/expedition\n");
   assert.equal(requests.length,0);
   answers.push('{"kind":"reply","value":"Hello, traveler!"}');
@@ -63,15 +64,29 @@ test("sprite turns use the configured HTTP provider and the existing expedition"
   assert.match(failedSummary.output,/Command finished \(exit 0\)\.\nonce\n$/);
   assert.equal(await game.run("read record"),"once\n");
   const beforeLimit = requests.length;
-  answers.push({code:"rate_limit_exceeded",retryAfter:"17"}, {code:"insufficient_quota",retryAfter:"30"}, 429);
-  for (const message of [/Try again in 17 seconds/, /Check API billing and usage limits/, /Check API quota and usage limits/]) {
+  answers.push({code:"rate_limit_exceeded",retryAfter:"17"}, {code:"insufficient_quota",retryAfter:"30"}, 429, 413);
+  for (const [offline,message] of [
+    [false,/Try again in 17 seconds/],
+    [true,/Check API billing and usage limits/],
+    [false,/Check API quota and usage limits/],
+    [false,/Shorten the input/],
+  ] as const) {
     const result = await run("make a room");
-    assert.equal(result.offline,true);
+    assert.equal(result.offline,offline);
     assert.match(result.output,message);
     assert.match(result.output,/No action ran/);
     assert.doesNotMatch(result.output,/Provider detail not for display/);
   }
-  assert.equal(requests.length,beforeLimit+3);
+  assert.equal(requests.length,beforeLimit+4);
+  assert.match(requests.at(-1).body.messages.map(message=>message.content).join("\n"),/Action taken: mkdir tower/);
+  answers.push('{"kind":"shell","value":"echo twice >> record; cat record"}',{code:"rate_limit_exceeded",retryAfter:"17"});
+  const limitedSummary = await run("record a second visit");
+  assert.equal(limitedSummary.offline,false);
+  assert.match(limitedSummary.output,/Summary unavailable\. Command finished \(exit 0\)\.\nonce\ntwice\n$/);
+  assert.equal(await game.run("read record"),"once\ntwice\n");
+  answers.push('{"kind":"reply","value":"Still here."}');
+  assert.equal((await run("Are you still there?")).output,"Still here.");
+  assert.match(requests.at(-1).body.messages.at(-2).content,/Action taken: echo twice/);
   for(const answer of [401,"unstructured text",'{"kind":"mud","value":"!mkdir unexpected"}']){
     answers.push(answer);
     const failed=await run("make a room");
