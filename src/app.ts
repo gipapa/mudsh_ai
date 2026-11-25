@@ -11,19 +11,31 @@ let config: SpriteConfig | undefined, resetHistory = false;
 const settings = el<HTMLDialogElement>("settings"), sprite = el<HTMLButtonElement>("sprite");
 const providerSelect = el<HTMLSelectElement>("provider-select");
 const endpointInput = el<HTMLInputElement>("endpoint");
+const modelSelect = el<HTMLSelectElement>("model-select");
 const modelInput = el<HTMLInputElement>("model");
 const keyInput = el<HTMLInputElement>("key");
 const fetchModelsButton = el<HTMLButtonElement>("fetch-models");
 const modelOptions = el("model-options"), modelStatus = el("model-status");
+const modelError = el("model-error");
 let displayedProvider = "", customEndpoint = "";
 let modelRequest: AbortController | undefined;
+
+function syncModelInput() {
+  const manual = modelSelect.value === "";
+  el("manual-model").hidden = !manual;
+  modelInput.disabled = !manual;
+}
 
 function clearModelList() {
   modelRequest?.abort();
   modelRequest = undefined;
   fetchModelsButton.disabled = false;
   modelOptions.replaceChildren();
+  modelOptions.hidden = true;
+  modelSelect.value = "";
+  syncModelInput();
   modelStatus.textContent = "";
+  modelError.textContent = "";
 }
 
 function syncProvider() {
@@ -128,24 +140,31 @@ endpointInput.oninput=()=>{
   clearModelList();
 };
 keyInput.oninput=clearModelList;
+modelSelect.onchange=syncModelInput;
 fetchModelsButton.onclick=async()=>{
   syncProvider();
-  clearModelList();
   const request = new AbortController();
   modelRequest = request;
   fetchModelsButton.disabled = true;
   modelStatus.textContent = "Loading models…";
+  modelError.textContent = "";
   try {
     const models=await listModels(endpointInput.value.trim(),keyInput.value.trim(),request.signal);
     if (modelRequest !== request) return;
-    modelOptions.replaceChildren(...models.map(model=>{
-      const option=document.createElement("option");option.value=model.id;option.label=model.ownedBy ? model.id+" · "+model.ownedBy : model.id;return option;
-    }));
-    modelStatus.textContent=models.length+" models loaded. You can still type another model ID.";
-    if (!modelInput.value && models[0]) modelInput.value=models[0].id;
+    const selected = modelSelect.value;
+    modelOptions.replaceChildren(...models.map(model => new Option(model.id, model.id)));
+    modelOptions.hidden = models.length === 0;
+    modelSelect.value = models.some(model => model.id === selected) ? selected : "";
+    syncModelInput();
+    modelStatus.textContent = models.length
+      ? `${models.length} ${models.length === 1 ? "model" : "models"} available. Choose one from the Model menu.`
+      : "The provider returned no models. You can enter a model ID manually.";
   } catch(error) {
-    if (modelRequest === request)
-      modelStatus.textContent=error instanceof Error ? error.message+" Type a model ID manually." : "Could not load models. Type a model ID manually.";
+    if (modelRequest === request) {
+      modelStatus.textContent = "";
+      const reason = error instanceof Error ? error.message : "Unknown provider error.";
+      modelError.textContent = `Could not load models. ${reason} Select Enter manually to use a model ID.`;
+    }
   } finally {
     if (modelRequest === request) {
       modelRequest = undefined;
@@ -164,7 +183,7 @@ el<HTMLFormElement>("provider").onsubmit=e=>{
   syncProvider();
   try {
     const endpoint=completionURL(endpointInput.value.trim());
-    const model=modelInput.value.trim();
+    const model=modelSelect.value || modelInput.value.trim();
     if (!model) throw Error("Enter the model ID supplied by your provider.");
     config={endpoint,model,key:keyInput.value.trim()};
     resetHistory=true;spriteStatus();settings.close();

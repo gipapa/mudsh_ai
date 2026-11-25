@@ -38,9 +38,16 @@
         <option value="custom">Custom OpenAI-compatible</option>
       </select></label>
       <label>API endpoint<input id="endpoint" type="url" required readonly value="https://api.openai.com/v1" placeholder="https://your-provider.example/v1" spellcheck="false"></label>
-      <div class="model-row"><label>Model ID<input id="model" list="model-options" required placeholder="Fetch models or type an ID" spellcheck="false"></label><button id="fetch-models" type="button">Get models</button></div>
-      <datalist id="model-options"></datalist>
+      <div class="model-row">
+        <label>Model<select id="model-select" aria-describedby="model-status model-error">
+          <option value="">Enter manually</option>
+          <optgroup id="model-options" label="Available models" hidden></optgroup>
+        </select></label>
+        <button id="fetch-models" type="button">Get models</button>
+      </div>
+      <label id="manual-model">Model ID<input id="model" required placeholder="Enter a model ID" spellcheck="false"></label>
       <p id="model-status" role="status"></p>
+      <p id="model-error" role="alert"></p>
       <label>API key (optional)<input id="key" type="password" autocomplete="off" placeholder="Kept in this tab only"></label>
       <p id="settings-error" role="alert"></p>
       <div><button type="submit">Enable sprite</button> <button id="disconnect" type="button">Disconnect</button> <button id="dismiss" type="button">Cancel</button></div>

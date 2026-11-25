@@ -31,17 +31,30 @@ export function modelsURL(base: string) {
 }
 
 export async function listModels(endpoint: string, key: string, signal?: AbortSignal): Promise<ModelInfo[]> {
+  const url = modelsURL(endpoint);
   const timeout = AbortSignal.timeout(15000);
-  const res = await fetch(modelsURL(endpoint), {
-    method:"GET", redirect:"error", credentials:"omit", referrerPolicy:"no-referrer",
-    signal:signal ? AbortSignal.any([timeout, signal]) : timeout,
-    headers:{Accept:"application/json", ...(key ? {Authorization:"Bearer "+key} : {})}
-  });
-  if (!res.ok) throw Error("Provider returned HTTP " + res.status);
-  const body = await res.json();
-  if (!Array.isArray(body?.data)) throw Error("Provider returned an invalid model list");
+  const requestSignal = signal ? AbortSignal.any([timeout, signal]) : timeout;
+  let body;
+  try {
+    const res = await fetch(url, {
+      method:"GET", redirect:"error", credentials:"omit", referrerPolicy:"no-referrer",
+      signal:requestSignal,
+      headers:{Accept:"application/json", ...(key ? {Authorization:"Bearer "+key} : {})}
+    });
+    if (res.status === 401 || res.status === 403) throw Error(`Check the API key (HTTP ${res.status}).`);
+    if (!res.ok) throw Error(`Provider returned HTTP ${res.status}.`);
+    body = await res.json();
+  } catch (error) {
+    if (timeout.aborted && requestSignal.reason === timeout.reason) throw Error("The request timed out. Try again.");
+    if (error instanceof TypeError && !requestSignal.aborted)
+      throw Error("Could not reach the provider. Check the endpoint, network, and browser access (CORS).");
+    if (error instanceof SyntaxError) throw Error("The provider returned an invalid model list.");
+    throw error;
+  }
+  if (!Array.isArray(body?.data)) throw Error("The provider returned an invalid model list.");
   return body.data.filter((model: unknown): model is {id: string; owned_by?: string; active?: boolean} =>
-    !!model && typeof model === "object" && typeof (model as {id?: unknown}).id === "string")
+    !!model && typeof model === "object" && typeof (model as {id?: unknown}).id === "string" &&
+    !!(model as {id: string}).id.trim())
     .map(model => ({id:model.id, ownedBy:model.owned_by, active:model.active}))
     .sort((a,b) => a.id.localeCompare(b.id));
 }
