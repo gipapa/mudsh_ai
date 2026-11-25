@@ -35,24 +35,29 @@ test("Pi uses tool results to continue a goal and stops after action limits or e
   t.after(()=>server.close());
 
   const config = {endpoint:"http://127.0.0.1:"+server.address().port+"/v1",key:"",model:"fixture",
-    options:{...defaultSpriteOptions,mode:"advanced" as const,maxSteps:2,maxTokens:256,toolResultChars:128}};
+    options:{...defaultSpriteOptions,name:"Ember",mode:"advanced" as const,maxSteps:2,maxTokens:256,toolResultChars:1024}};
   const game = createSession(0);
   const log: {stage:string; text?:string}[] = [];
   const history = [];
   const run = () => playAdvancedTurn(game,"Read the letter and bring me to a tower.",config,
     (stage,text)=>log.push({stage,text}),history);
 
-  replies.push({name:"mud",args:{command:"read archives/letter.txt",show:true}},
+  replies.push({name:"shell",args:{script:"cd archives && cat letter.txt",show:true}},
     {name:"shell",args:{script:"mkdir tower; cd tower"}}, "I found the letter and entered the tower.");
   assert.equal((await run()).output,"I found the letter and entered the tower.");
   assert.equal(requests[0].url,"/v1/chat/completions");
   assert.equal(requests[0].auth,undefined);
   assert.equal(requests[0].body.max_completion_tokens,256);
   assert.equal(requests[0].body.stream,true);
+  assert.deepEqual(requests[0].body.tools.map(tool=>tool.function.name),["shell"]);
+  assert.match(requests[0].body.messages[0].content,/You are "Ember"/);
   assert.equal(requests[1].body.messages.at(-1).role,"tool");
   assert.match(requests[1].body.messages.at(-1).content,/Keeper,/);
-  assert.match(requests[2].body.messages.at(-1).content,/Current path: \/expedition\/tower/);
-  assert.equal(game.cwd,"/expedition/tower");
+  assert.match(requests[1].body.messages.at(-1).content,/Current room:/);
+  assert.match(requests[2].body.messages.at(-1).content,/Current path: \/expedition\/archives\/tower/);
+  assert.equal(game.cwd,"/expedition/archives/tower");
+  assert.deepEqual(log.filter(item=>item.stage==="executing").map(item=>item.text),
+    ["cd archives && cat letter.txt","mkdir tower; cd tower"]);
   assert.deepEqual(log.filter(item=>item.stage==="output").map(item=>item.text),[game.scene.letter]);
   assert.equal(history.length,2);
 

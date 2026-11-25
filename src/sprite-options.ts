@@ -13,6 +13,7 @@ export const spriteNumbers = {
 
 export type SpriteNumber = keyof typeof spriteNumbers;
 export type SpriteOptions = Record<SpriteNumber, number> & {
+  name: string;
   mode: "simple" | "advanced";
   summarize: boolean;
   temperature?: number;
@@ -23,7 +24,7 @@ export type SpriteOptions = Record<SpriteNumber, number> & {
 export const defaultSpriteOptions: SpriteOptions = {
   maxTokens: 0, historyTurns: 4, historyChars: 1000, roomEntries: 40, timeoutSeconds: 25,
   stdoutChars: 4000, stderrChars: 2000, maxSteps: 8, deadlineSeconds: 90, toolResultChars: 1600,
-  mode: "simple", summarize: true, instructions: "",
+  name: "Sprite", mode: "simple", summarize: true, instructions: "",
 };
 
 export function sampling(options: SpriteOptions) {

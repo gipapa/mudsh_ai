@@ -46,13 +46,17 @@ test("sprite turns use the configured HTTP provider and the existing expedition"
   assert.equal(requests[0].auth,"Bearer demo-only");
   assert.equal(requests[0].body.model,"fixture");
   assert.match(requests[0].body.messages.at(-1).content,/The Gatehouse/);
-  answers.push('{"kind":"mud","value":"go archives"}','{"kind":"mud","value":"read letter.txt"}');
-  await run("visit the archive");
-  assert.equal((await run("read the letter")).output,game.scene.letter);
+  const direction = (await game.survey()).exits.find(exit=>exit.name==="archives").direction;
+  answers.push(JSON.stringify({kind:"shell",value:"cd archives && cat letter.txt",raw:true}));
+  assert.equal((await run("Go "+direction+" and read the letter")).output,game.scene.letter);
+  assert.equal(game.cwd,"/expedition/archives");
+  assert.equal(commands.at(-1),"cd archives && cat letter.txt");
+  assert.match(requests.at(-1).body.messages[0].content,/Resolve directions and room titles using the supplied exits/);
+  assert.doesNotMatch(requests.at(-1).body.messages[0].content,/"kind":"mud"/);
   answers.push('{"kind":"shell","value":"mkdir tower; cd tower"}',"You are in the tower.");
   assert.equal((await run("build a tower and enter it")).output,"You are in the tower.");
   assert.equal(game.cwd,"/expedition/archives/tower");
-  assert.equal(commands.at(-1),"!mkdir tower; cd tower");
+  assert.equal(commands.at(-1),"mkdir tower; cd tower");
   answers.push('{"kind":"shell","value":"echo once >> record; cat record"}',503);
   const failedSummary=await run("record a visit");
   assert.equal(failedSummary.offline,true);
@@ -75,7 +79,7 @@ test("sprite turns use the configured HTTP provider and the existing expedition"
   }
   assert.deepEqual((await game.survey()).exits,[]);
 
-  const simple = {...config,options:{...defaultSpriteOptions,maxTokens:256,historyTurns:0,
+  const simple = {...config,options:{...defaultSpriteOptions,name:"Ember",maxTokens:256,historyTurns:0,
     roomEntries:1,summarize:false,temperature:0.25,effort:"low" as const,instructions:"Keep it brief."}};
   const beforeSimple = requests.length;
   const history = [{role:"user" as const,content:"Old prompt"}];
@@ -89,6 +93,7 @@ test("sprite turns use the configured HTTP provider and the existing expedition"
   assert.equal(request.temperature,0.25);
   assert.equal(request.messages.length,2);
   assert.match(request.messages[0].content,/Keep it brief/);
+  assert.match(request.messages[0].content,/You are "Ember"/);
   assert.equal(JSON.parse(request.messages[1].content).room.exits.length,1);
   assert.deepEqual(history,[]);
 });

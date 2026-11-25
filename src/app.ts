@@ -75,6 +75,7 @@ function readSpriteOptions(): SpriteOptions {
     if (!field.disabled) options[name] = field.valueAsNumber;
   }
   const temperature = el<HTMLInputElement>("temperature");
+  options.name = el<HTMLInputElement>("sprite-name").value.trim() || defaultSpriteOptions.name;
   options.temperature = temperature.value ? temperature.valueAsNumber : undefined;
   options.effort = (el<HTMLSelectElement>("reasoning-effort").value || undefined) as SpriteOptions["effort"];
   options.mode = modeInput.value === "advanced" ? "advanced" : "simple";
@@ -175,13 +176,15 @@ function start(){
       const executing = data.stage === "executing";
       const timeout = config?.options?.timeoutSeconds ?? defaultSpriteOptions.timeoutSeconds;
       watchdog(executing ? 10000 : (timeout + 15) * 1000);
-      spriteStatus(executing ? "Sprite acting…" : data.stage === "thinking" ? "Sprite listening…" : "Sprite describing…");
-      if (executing && data.text) print("Sprite ❯ "+data.text,"typed");
+      spriteStatus(data.speaker + (executing ? " acting…" : data.stage === "thinking" ? " listening…" : " describing…"));
+      if (executing && data.text) print(data.speaker + " ❯ " + data.text,"typed");
       return;
     }
     if (data.offline) {config=undefined;resetHistory=true;}
     spriteStatus();
-    clearTimeout(timer);render(data.room);print(data.output);
+    clearTimeout(timer);render(data.room);
+    if (data.speaker && data.output) print(data.speaker + " ❯","typed");
+    print(data.output);
     if(first){print(data.room.title+"\n"+data.room.description,"intro");
       print("Read field-note.txt to begin. Type help for MUD verbs, or !ls to use the shell.");first=false;}
     busy=false;ended=data.ended;controls();
@@ -270,9 +273,10 @@ settingsForm.onsubmit=e=>{
     const endpoint=completionURL(endpointInput.value.trim());
     const model=modelSelect.value || modelInput.value.trim();
     if (!model) throw Error("Enter the model ID supplied by your provider.");
-    config={endpoint,model,key:keyInput.value.trim(),options:readSpriteOptions()};
+    const options = readSpriteOptions();
+    config={endpoint,model,key:keyInput.value.trim(),options};
     resetHistory=true;spriteStatus();settings.close();
-    print("Sprite enabled. Speak naturally, or use !command to bypass the sprite.");
+    print(options.name + " enabled. Speak naturally, or use !command to run a script directly.");
     input.focus();
   } catch(error) {
     selectTab(tabs[0]);
