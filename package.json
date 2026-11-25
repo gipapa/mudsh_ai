@@ -4,6 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "license": "MIT",
+  "bin": {
+    "mudsh": "./bin/mudsh"
+  },
   "scripts": {
     "build": "node scripts/build.mjs",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
@@ -12,6 +15,7 @@
   "dependencies": {
     "@earendil-works/pi-agent-core": "0.84.4",
     "@earendil-works/pi-ai": "0.84.4",
+    "fflate": "0.8.2",
     "just-bash": "3.6.0"
   },
   "devDependencies": {

@@ -21,7 +21,12 @@ for (const seed of [0,1,2,112]) test("room and shell stay synchronized, seed "+s
   const scene = sceneForSeed(seed);
   const exit = initial.exits.find(e=>e.name===scene.folders[0]);
   await game.run("go "+exit.direction);
+  await game.survey();
+  assert.match(await game.run("!ls -l"),/letter\.txt/);
+  assert.equal(game.objectiveComplete,false);
   assert.equal(await game.run("read letter.txt"),scene.letter);
+  assert.equal(game.objectiveComplete,true);
+  assert.equal(game.ended,false);
   assert.equal(await game.run("!cat letter.txt | head -n 1"),scene.letter.split("\n")[0]+"\n");
   await game.run("!cd ../tower; PWD=/fake");
   assert.equal((await game.survey()).cwd,"/expedition/tower");
@@ -48,7 +53,9 @@ test("the observatory can be solved using only MUD verbs, including a leading ze
   assert.match(await game.run("unlock " + code.slice(1)),/four-digit/);
   assert.match(await game.run("unlock 9999"),/incorrect/);
   assert.match(await game.run("!cat chest.txt"),/locked/);
+  assert.equal(game.objectiveComplete,false);
   assert.match(await game.run("unlock " + code),/Tideglass Lens/);
+  assert.equal(game.objectiveComplete,true);
   assert.match(await game.run("!cat chest.txt"),/Tideglass Lens/);
 });
 
@@ -57,11 +64,13 @@ test("the shell unlock command uses the current expedition's password and chest"
   const attempted = await game.io.shell("cd vault && unlock 0036",game.cwd);
   assert.notEqual(attempted.exitCode,0);
   assert.match(attempted.stderr,/incorrect/);
+  assert.equal(game.objectiveComplete,false);
 
   const result = await game.io.shell("cd vault && unlock 3237 && cat chest.txt",game.cwd);
   assert.equal(result.exitCode,0);
   assert.equal(result.cwd,"/expedition/vault");
   assert.match(result.stdout,/Tideglass Lens/);
+  assert.equal(game.objectiveComplete,true);
   game.move(result.cwd);
   assert.match(await game.run("read chest.txt"),/Tideglass Lens/);
   assert.match(await createSession(3).run("read vault/chest.txt"),/locked/);

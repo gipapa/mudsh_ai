@@ -1,0 +1,90 @@
+#!/bin/bash
+set -e
+
+# npm link resolves its bin entries via symlinks on both macOS and Linux.
+launcher=${BASH_SOURCE[0]}
+while [[ -L "$launcher" ]]; do
+  link=$(readlink "$launcher")
+  case $link in
+    /*) launcher=$link ;;
+    *) launcher=$(dirname "$launcher")/$link ;;
+  esac
+done
+root=$(cd -- "$(dirname "$launcher")/.." && pwd -P)
+image=mudsh-ai:local
+
+run_console() {
+  if ! command -v node >/dev/null 2>&1 || [[ ! -f "$root/dist-native/console.mjs" ]]; then
+    echo "Install Node.js 24 and run npm ci && npm run build to prepare mudsh." >&2
+    exit 1
+  fi
+  export MUDSH_LAUNCHER="$root/bin/mudsh"
+  unset MUDSH_GAME_ROOT
+  exec node "$root/dist-native/console.mjs" "$root" "$@"
+}
+
+raw_bash() {
+  export MUDSH_LAUNCHER="$root/bin/mudsh"
+  unset MUDSH_GAME_ROOT
+  if (( $# )); then exec /bin/bash "$@"; fi
+  exec /bin/bash --rcfile "$root/native/shell.bash" -i
+}
+
+case ${1-} in
+  sprite)
+    shift
+    run_console settings "$@"
+    ;;
+  build-image)
+    if [[ ! -f "$root/dist-native/game.mjs" ]]; then
+      echo "Run npm run build to prepare the native image." >&2
+      exit 1
+    fi
+    exec docker build --tag "$image" "$root/dist-native"
+    ;;
+  play)
+    shift
+    profile=${MUDSH_PROFILE:-default}
+    if [[ ! $profile =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]{0,39}$ ]]; then
+      echo "Use letters, digits, hyphens or underscores for MUDSH_PROFILE." >&2
+      exit 2
+    fi
+    if ! docker info --format '{{.ServerVersion}}' >/dev/null 2>&1; then
+      echo "Start Docker to play the isolated dungeon." >&2
+      exit 1
+    fi
+    if ! docker image inspect "$image" >/dev/null 2>&1; then
+      echo "Run mudsh build-image to prepare the dungeon container." >&2
+      exit 1
+    fi
+    if (( $# == 0 )); then run_console dungeon; fi
+    tty=()
+    if [[ ${1-} != --bridge && -t 0 && -t 1 ]]; then tty=(--tty); fi
+    if [[ ${1-} == --bash ]]; then shift; fi
+    exec docker run --rm --interactive "${tty[@]}" --init \
+      --name "mudsh-ai-$profile" --network none --read-only --cap-drop ALL \
+      --security-opt no-new-privileges --pids-limit 96 --memory 256m --cpus 1 \
+      --mount "type=volume,source=mudsh-ai-save-$profile,target=/expedition" \
+      --tmpfs /tmp:rw,nosuid,nodev,noexec,size=16m \
+      "$image" "$@"
+    ;;
+  --bash)
+    shift
+    raw_bash "$@"
+    ;;
+  --help)
+    printf '%s\n' 'mudsh               Open a local MUD shell backed by Bash' \
+      'mudsh play          Play the dungeon in an isolated MUD shell' \
+      'mudsh sprite setup  Configure the sprite and its model' \
+      'mudsh --bash        Open an ordinary interactive Bash session' \
+      'mudsh play --bash   Play the dungeon in ordinary interactive Bash' \
+      'mudsh build-image   Build the playable container from the local project'
+    ;;
+  *)
+    case ${1-} in
+      -l|--login) (( $# == 1 )) && run_console host ;;
+    esac
+    if (( $# )); then exec /bin/bash "$@"; fi
+    run_console host
+    ;;
+esac

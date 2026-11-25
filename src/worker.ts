@@ -1,15 +1,15 @@
-import { createSession } from "./session.ts";
+import { createDungeon } from "./session.ts";
 import { playTurn, type Progress, type SpriteHistory } from "./sprite.ts";
 import { route } from "./world.ts";
 import { defaultSpriteOptions } from "./sprite-options.ts";
-let game: ReturnType<typeof createSession>;
+let game: Awaited<ReturnType<typeof createDungeon>>;
 let history: SpriteHistory = [];
 self.onmessage = async ({data}) => {
   let output = "";
   let offline = false;
   let speaker: string | undefined;
   try {
-    if ("seed" in data) game = createSession(data.seed);
+    if ("save" in data) game = await createDungeon(data.save);
     else {
       if (data.resetHistory) history = [];
       const spriteTurn = route(data.line,!!data.config) === "sprite";
@@ -24,12 +24,18 @@ self.onmessage = async ({data}) => {
       offline = !!result.offline;
     }
   } catch (error) { output = String(error); }
+  if (!game) {
+    self.postMessage({error: output || "Unable to open the dungeon."});
+    return;
+  }
+  const endings = game.completions.splice(0);
+  const status = {output,ended:game.ended,offline,speaker,endings,save:game.save};
   try {
     const room = await game.survey();
-    self.postMessage({output,room,ended:game.ended,offline,speaker});
+    self.postMessage({...status,room});
   } catch {
     // A shell script may remove or move the directory it started in.
     game.move("/");
-    self.postMessage({output:output + "\nPrevious room unavailable; returned to /.",room:await game.survey(),ended:game.ended,offline,speaker});
+    self.postMessage({...status,output:output + "\nPrevious room unavailable; returned to /.",room:await game.survey()});
   }
 };

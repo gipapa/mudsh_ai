@@ -45,6 +45,7 @@ test("Pi uses tool results to continue a goal and stops after action limits or e
   replies.push({name:"shell",args:{script:"cd archives && cat letter.txt",show:true}},
     {name:"shell",args:{script:"mkdir tower; cd tower"}}, "I found the letter and entered the tower.");
   assert.equal((await run()).output,"I found the letter and entered the tower.");
+  assert.equal(game.objectiveComplete,true);
   assert.equal(requests[0].url,"/v1/chat/completions");
   assert.equal(requests[0].auth,undefined);
   assert.equal(requests[0].body.max_completion_tokens,256);

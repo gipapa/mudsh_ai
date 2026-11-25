@@ -4,12 +4,11 @@ import { stream } from "@earendil-works/pi-ai/api/openai-completions";
 import {
   completionURL, isRecoverableLimit, providerLimitError, recentHistory, rememberTurn,
   roomContext, runSpriteShell, spriteIdentity, spriteShellInstructions,
-  type Progress, type SpriteConfig, type SpriteHistory, type SpriteTurnResult,
+  type Progress, type SpriteConfig, type SpriteHistory, type SpriteTurnResult, type SpriteWorld,
 } from "./sprite.ts";
 import { defaultSpriteOptions } from "./sprite-options.ts";
-import type { Expedition } from "./world.ts";
 
-const instructions = `Use the shell tool only to carry out the player's request in this virtual world.
+const instructions = `Use the shell tool only to carry out the player's request in this session.
 Use tool results to decide what to do next. Verify the goal when useful, then reply briefly with the result.
 If you cannot achieve the goal, explain what you tried and what prevented completion.
 Set show=true when the player asks to read a file or see original command output.`;
@@ -19,7 +18,7 @@ const shellParameters = Type.Object({
   show: Type.Optional(Type.Boolean()),
 });
 
-export async function playAdvancedTurn(game: Expedition, line: string, config: SpriteConfig,
+export async function playAdvancedTurn(game: SpriteWorld, line: string, config: SpriteConfig,
   progress: Progress, history: SpriteHistory): Promise<SpriteTurnResult> {
   const options = config.options ?? defaultSpriteOptions;
   const deadline = AbortSignal.timeout(options.deadlineSeconds * 1000);
@@ -40,7 +39,7 @@ export async function playAdvancedTurn(game: Expedition, line: string, config: S
   }], details: null });
   const shell: AgentTool<typeof shellParameters> = {
     name: "shell", label: "Shell",
-    description: "Run a shell script such as cd, ls or cat in the virtual filesystem. Provide the script without a prompt prefix. Use show=true to print raw output.",
+    description: "Run a shell script such as cd, ls or cat in the current session. Provide the script without a prompt prefix. Use show=true to print raw output.",
     parameters: shellParameters,
     async execute(_id, {script, show}) {
       deadline.throwIfAborted();
@@ -89,7 +88,7 @@ export async function playAdvancedTurn(game: Expedition, line: string, config: S
     const messages = await runAgentLoop(
       [{role:"user",content:JSON.stringify({request:line,region:game.scene.name,room}),timestamp:now}],
       {
-        systemPrompt: [spriteIdentity(options),spriteShellInstructions,instructions,options.instructions].filter(Boolean).join("\n\n"),
+        systemPrompt: [spriteIdentity(options),game.shellInstructions ?? spriteShellInstructions,instructions,options.instructions].filter(Boolean).join("\n\n"),
         messages: recentHistory(history,options).map(message =>
           message.role === "user" ? {role:"user",content:message.content,timestamp:now} :
             {role:"assistant",content:[{type:"text",text:message.content}],timestamp:now,

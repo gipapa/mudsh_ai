@@ -1,4 +1,6 @@
-import { sceneForSeed } from "./en.ts";
+import { messages } from "./en.ts";
+import { campaignName, campaignRooms, roomIndex, validSave, type CampaignSave } from "./campaign.ts";
+import { startPath } from "./world.ts";
 import type { Room } from "./world.ts";
 import { drawRegion } from "./panorama.ts";
 import { completionURL, listModels, type SpriteConfig } from "./sprite.ts";
@@ -24,6 +26,7 @@ const modelError = el("model-error");
 let displayedProvider = "", customEndpoint = "";
 let modelRequest: AbortController | undefined;
 const providerStorageKey = "mudsh_ai.provider.v1";
+const campaignStorageKey = "mudsh_ai.campaign.v1";
 type SavedProvider = { provider: string; endpoint: string; model: string; key?: string };
 
 function readSavedProvider(): SavedProvider | undefined {
@@ -45,6 +48,25 @@ function saveProvider(saved: SavedProvider) {
     return true;
   } catch {
     return false;
+  }
+}
+
+function readCampaign(): CampaignSave | undefined {
+  try {
+    const saved = JSON.parse(localStorage.getItem(campaignStorageKey) ?? "null");
+    return validSave(saved) ? saved : undefined;
+  } catch {
+    return;
+  }
+}
+
+function saveCampaign(save: CampaignSave, restart = false) {
+  try {
+    const previous = readCampaign();
+    if (!restart && previous && (previous.seed !== save.seed || previous.completed >= save.completed)) return;
+    localStorage.setItem(campaignStorageKey,JSON.stringify(save));
+  } catch {
+    // The current dungeon remains usable without storage.
   }
 }
 
@@ -160,7 +182,7 @@ function spriteStatus(stage?: string) {
 }
 function watchdog(ms: number) {
   clearTimeout(timer);
-  timer=window.setTimeout(()=>fail("Interpreter stopped responding. Choose New expedition to restart."),ms);
+  timer=window.setTimeout(()=>fail("Interpreter stopped responding. Choose Restart dungeon to try again."),ms);
 }
 function print(value:string, kind="") {
   if (!value) return;
@@ -183,7 +205,7 @@ function render(room:Room) {
       const b=document.createElement("button");b.className=id==="exits"?"exit":"file";
       if(item.direction){const d=document.createElement("span");d.textContent=item.direction;b.append(d);}
       b.append(document.createTextNode(item.name+(id==="exits"?"/":"")));
-      b.addEventListener("click",()=>send(item.line));list.append(b);
+      b.addEventListener("click",()=>send(item.line,true));list.append(b);
     }
     if(!items.length){const empty=document.createElement("span");empty.className="empty";empty.textContent="None here";list.append(empty);}
   }
@@ -191,24 +213,25 @@ function render(room:Room) {
 function fail(message:string) {
   clearTimeout(timer);worker.terminate();ended=true;busy=false;controls();print(message);
 }
-function send(line:string) {
+function send(line:string, worldAction = false) {
   if(busy||ended||!line.trim())return;
   history.push(line);cursor=history.length;input.value="";print("❯ "+line,"typed");
-  busy=true;controls();worker.postMessage({line,config,resetHistory});
-  resetHistory=false;
+  busy=true;controls();worker.postMessage({line,config:worldAction ? undefined : config,resetHistory:!worldAction && resetHistory});
+  if (!worldAction) resetHistory=false;
   watchdog(10000);
 }
-function start(){
+function start(save = readCampaign() ?? {seed:crypto.getRandomValues(new Uint32Array(1))[0],completed:0}, restart = false){
   worker?.terminate();clearTimeout(timer);busy=true;ended=false;controls();spriteStatus();
   history=[];cursor=0;input.value="";log.replaceChildren();
-  const seed=crypto.getRandomValues(new Uint32Array(1))[0], scene=sceneForSeed(seed);
-  el("realm").textContent=scene.name;el("region").textContent=scene.region;
-  el("seed").textContent="Map seed · "+seed.toString(16).padStart(8,"0").toUpperCase();
-  drawRegion(document.querySelector("canvas")!,seed);
+  el("realm").textContent=campaignName;
+  el("progress").textContent=`${save.completed} / ${campaignRooms.length} rooms cleared`;
+  el("next-room").hidden=true;
+  drawRegion(document.querySelector("canvas")!,1);
   worker=new Worker(new URL("./worker.js",import.meta.url),{type:"module"});
   worker.onerror=()=>fail("Unable to open the interpreter. Start a new expedition to retry.");
   let first=true;
   worker.onmessage=({data})=>{
+    if (data.error) {fail(data.error);return;}
     if (data.stage) {
       if (data.stage === "output") {print(data.text);return;}
       const executing = data.stage === "executing";
@@ -221,23 +244,33 @@ function start(){
     if (data.offline) {config=undefined;resetHistory=true;}
     spriteStatus();
     clearTimeout(timer);render(data.room);
+    saveCampaign(data.save);
+    el("progress").textContent=`${data.save.completed} / ${campaignRooms.length} rooms cleared`;
+    const index=roomIndex(startPath,data.room.cwd);
+    el("next-room").hidden=!(index >= 0 && index < data.save.completed && index + 1 < campaignRooms.length);
     if (data.speaker && data.output) print(data.speaker + " ❯","typed");
     print(data.output);
+    for (const ending of data.endings) print(messages.objectiveComplete + "\n" + ending,"goal-success");
     if(first){print(data.room.title+"\n"+data.room.description,"intro");
-      print("Read field-note.txt to begin. Type help for MUD verbs, or !ls to use the shell.");first=false;}
+      print("Read objective.txt to begin. Type help for MUD verbs, or !ls to use the shell.");first=false;}
     busy=false;ended=data.ended;controls();
     if(!ended && window.matchMedia("(pointer:fine)").matches)input.focus({preventScroll:true});
   };
-  worker.postMessage({seed});
+  saveCampaign(save,restart);
+  worker.postMessage({save});
+  watchdog(10000);
 }
 document.querySelector("form")!.onsubmit=e=>{e.preventDefault();send(input.value);};
 input.onkeydown=e=>{
   if(!["ArrowUp","ArrowDown"].includes(e.key))return;
   e.preventDefault();cursor=Math.max(0,Math.min(history.length,cursor+(e.key==="ArrowUp"?-1:1)));input.value=history[cursor]||"";
 };
-for(const b of document.querySelectorAll<HTMLButtonElement>("[data-line]"))b.onclick=()=>send(b.dataset.line!);
+for(const b of document.querySelectorAll<HTMLButtonElement>("[data-line]"))b.onclick=()=>send(b.dataset.line!,true);
 el("new").onclick=()=>dialog.showModal();el("cancel").onclick=()=>dialog.close();
-el("restart").onclick=()=>{dialog.close();start();};
+el("restart").onclick=()=>{
+  dialog.close();
+  start({seed:crypto.getRandomValues(new Uint32Array(1))[0],completed:0},true);
+};
 sprite.onclick=()=>{
   syncProvider();
   el("settings-error").textContent="";

@@ -46,6 +46,7 @@ export class Expedition {
   seed: number;
   cwd = startPath;
   ended = false;
+  objectiveComplete = false;
   history: string[] = [];
   assignments = new Map<string, Map<string, string>>();
   constructor(io: WorldIO, seed: number) { this.io = io; this.seed = seed; }

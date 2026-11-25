@@ -43,6 +43,7 @@ test("sprite turns use the configured HTTP provider and the existing expedition"
   assert.equal(requests.length,0);
   answers.push('{"kind":"reply","value":"Hello, traveler!"}');
   assert.equal((await run("Hi")).output,"Hello, traveler!");
+  assert.equal(game.objectiveComplete,false);
   assert.equal(requests[0].url,"/v1/chat/completions");
   assert.equal(requests[0].auth,"Bearer demo-only");
   assert.equal(requests[0].body.model,"fixture");
@@ -50,6 +51,7 @@ test("sprite turns use the configured HTTP provider and the existing expedition"
   const direction = (await game.survey()).exits.find(exit=>exit.name==="archives").direction;
   answers.push(JSON.stringify({kind:"shell",value:"cd archives && cat letter.txt",raw:true}));
   assert.equal((await run("Go "+direction+" and read the letter")).output,game.scene.letter);
+  assert.equal(game.objectiveComplete,true);
   assert.equal(game.cwd,"/expedition/archives");
   assert.equal(commands.at(-1),"cd archives && cat letter.txt");
   assert.match(requests.at(-1).body.messages[0].content,/Resolve directions and room titles using the supplied exits/);

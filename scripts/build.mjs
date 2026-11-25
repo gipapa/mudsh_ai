@@ -15,7 +15,10 @@ const cwdResult = {
       const edits = [
         ["let a=f=>l?this.logResult(f):f,c=ii(i,n?.signal)", "let agrState,a=f=>({...l?this.logResult(f):f,cwd:agrState?.cwd??n?.cwd??this.state.cwd}),c=ii(i,n?.signal)"],
         ["},g=t;u.rawScript", "},g=t;agrState=m;u.rawScript"],
-        ['!t.trim())return{stdout:"",stderr:"",exitCode:0,env:Nn(this.state.env,u.env)};', '!t.trim())return a({stdout:"",stderr:"",exitCode:0,env:Nn(this.state.env,u.env)});']
+        ['!t.trim())return{stdout:"",stderr:"",exitCode:0,env:Nn(this.state.env,u.env)};', '!t.trim())return a({stdout:"",stderr:"",exitCode:0,env:Nn(this.state.env,u.env)});'],
+        // GNU grep -r searches dotfiles even when plain ls hides them.
+        ['if(Bn(o),h.name.startsWith("."))continue;let m=', 'Bn(o);let m='],
+        ['if(Bn(o),h.startsWith("."))continue;let m=', 'Bn(o);let m='],
       ];
       for (const [from,to] of edits) {
         if (contents.split(from).length !== 2) throw Error("Unexpected just-bash patch context");
@@ -28,9 +31,16 @@ const cwdResult = {
 await build({entryPoints: ["src/app.ts","src/worker.ts","src/session.ts"], outdir:"dist", bundle:true,
   format:"esm", splitting:true, platform:"browser", target:"es2022", minify:true, legalComments:"eof",
   chunkNames:"chunks/[name]-[hash]", alias:{"node:zlib":resolve("src/zlib.ts")}, plugins:[cwdResult]});
+await build({entryPoints:["src/native.ts"], outfile:"dist-native/game.mjs", bundle:true, platform:"node",
+  target:"node24", format:"esm", legalComments:"eof"});
+await build({entryPoints:["src/native-console.ts"], outfile:"dist-native/console.mjs", bundle:true, platform:"node",
+  packages:"external", target:"node24", format:"esm", legalComments:"eof"});
+for (const file of ["Dockerfile","shell.bash","play.bash","bridge.bash"]) await copyFile("native/" + file, "dist-native/" + file);
 for (const file of ["index.html","style.css","LICENSE"]) await copyFile(file, "dist/" + file);
 await copyFile("node_modules/just-bash/LICENSE","dist/licenses/just-bash.txt");
 await copyFile("licenses/pi.txt","dist/licenses/pi.txt");
+await copyFile("node_modules/fflate/LICENSE","dist/licenses/fflate.txt");
+await copyFile("node_modules/fflate/LICENSE","dist-native/fflate-LICENSE");
 for (const [name, file] of [
   ["openai","LICENSE"], ["typebox","license"], ["ignore","LICENSE-MIT"],
   ["partial-json","LICENSE"], ["yaml","LICENSE"],
