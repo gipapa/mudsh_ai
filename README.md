@@ -1,10 +1,35 @@
 # mudsh_ai
 
-[Play the web demo](https://gipapa.github.io/mudsh_ai/). Explore a filesystem as a text adventure. Directories are rooms, files are objects, and your expedition starts in a randomly seeded castle, dungeon or abandoned mine.
+[Play the web demo](https://gipapa.github.io/mudsh_ai/). Explore a filesystem as a text adventure. Directories are rooms, files are objects, and each expedition starts on a randomly selected map.
 
-Type `look` or click an exit in the room survey. Follow the clue in `read field-note.txt` to find a letter. Use `go NAME`, `go DIRECTION`, `back`, `read FILE`, `help` and `quit` while the sprite is offline. Run shell scripts directly with `!` or `！`. Try `!mkdir tower`, `go tower`, then `!pwd`.
+Type `read field-note.txt` to find out why you’re there. While the sprite is offline, use `look` to survey the room, click an exit or type `go NAME` or `go DIRECTION` to move, use `back` to return, and use `read FILE` to read an object. Type `help` for the available verbs or `quit` to end the expedition. Run shell scripts directly with `!` or `！`. Try `!mkdir tower`, `go tower`, then `!pwd`.
 
 The demo runs in the browser using just-bash and an in-memory filesystem. Each script starts in the current room. File changes and movement last until reload or a new expedition. The shell supports a subset of Unix utilities, pipes and redirection.
+
+## Maps and walkthrough
+
+| Map | Setting | Objective | Example seed |
+| --- | --- | --- | --- |
+| Ashwick Keep | Castle | Find Elin’s letter beyond the gatehouse. | `0` |
+| Hollowdeep | Dungeon | Find the Ferryman’s letter below the iron threshold. | `1` |
+| Embervein Mine | Abandoned mine | Find Foreman Vale’s letter near the drift entrance. | `2` |
+| Tideglass Observatory | Coastal observatory | Find the password and open the chest in the vault. | `3` |
+
+The walkthrough uses room names because compass directions depend on the seed. All four maps can be played with the sprite offline.
+
+<details>
+<summary>Show solutions (spoilers)</summary>
+
+- **Ashwick Keep.** From the gatehouse, use `go archives` and `read letter.txt`.
+- **Hollowdeep.** From the threshold, use `go cells` and `read letter.txt`.
+- **Embervein Mine.** From the drift entrance, use `go workshop` and `read letter.txt`.
+- **Tideglass Observatory.**
+  1. From the landing, use `go chartroom` and `read star-chart.txt` to find the first two digits.
+  2. Use `back`, then `go tide-room` and `read tide-ledger.txt` to find the last two digits.
+  3. Join the two pairs in that order, keeping any leading zero. The password depends on the map seed.
+  4. Use `back` and `go vault`. Type `unlock CODE` with the sprite offline or `!unlock CODE` in the shell, substituting the four digits for `CODE`. Then `read chest.txt` to see what’s inside.
+
+</details>
 
 ## Connect the sprite
 

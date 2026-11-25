@@ -1,4 +1,4 @@
-import { scenes } from "./en.ts";
+import { sceneForSeed } from "./en.ts";
 import type { Room } from "./world.ts";
 import { drawRegion } from "./panorama.ts";
 import { completionURL, listModels, type SpriteConfig } from "./sprite.ts";
@@ -201,7 +201,7 @@ function send(line:string) {
 function start(){
   worker?.terminate();clearTimeout(timer);busy=true;ended=false;controls();spriteStatus();
   history=[];cursor=0;input.value="";log.replaceChildren();
-  const seed=crypto.getRandomValues(new Uint32Array(1))[0], scene=scenes[seed%3];
+  const seed=crypto.getRandomValues(new Uint32Array(1))[0], scene=sceneForSeed(seed);
   el("realm").textContent=scene.name;el("region").textContent=scene.region;
   el("seed").textContent="Map seed · "+seed.toString(16).padStart(8,"0").toUpperCase();
   drawRegion(document.querySelector("canvas")!,seed);
