@@ -53,7 +53,8 @@
       <label id="manual-model">Model ID<input id="model" required placeholder="Enter a model ID" spellcheck="false"></label>
       <p id="model-status" role="status"></p>
       <p id="model-error" role="alert"></p>
-      <label>API key (optional)<input id="key" type="password" autocomplete="off" placeholder="Kept in this tab only"></label>
+      <label>API key (optional)<input id="key" type="password" autocomplete="off" aria-describedby="key-storage"></label>
+      <small id="key-storage">Enabling saves the key in this browser’s local storage. Disconnect clears it.</small>
       </section>
       <section id="mode-panel" class="settings-panel" role="tabpanel" aria-labelledby="mode-tab" hidden>
         <label>Sprite name<input id="sprite-name" type="text" maxlength="40" placeholder="Sprite"></label>

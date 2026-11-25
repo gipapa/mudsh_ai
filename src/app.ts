@@ -23,6 +23,30 @@ const modelOptions = el("model-options"), modelStatus = el("model-status");
 const modelError = el("model-error");
 let displayedProvider = "", customEndpoint = "";
 let modelRequest: AbortController | undefined;
+const providerStorageKey = "mudsh_ai.provider.v1";
+type SavedProvider = { provider: string; endpoint: string; model: string; key?: string };
+
+function readSavedProvider(): SavedProvider | undefined {
+  try {
+    const saved: Partial<SavedProvider> | null = JSON.parse(localStorage.getItem(providerStorageKey) ?? "null");
+    if (!saved || typeof saved.provider !== "string" || typeof saved.endpoint !== "string" ||
+        typeof saved.model !== "string" || !saved.model.trim()) return;
+    completionURL(saved.endpoint);
+    return {provider:saved.provider,endpoint:saved.endpoint,model:saved.model,
+      key:typeof saved.key === "string" ? saved.key : undefined};
+  } catch {
+    // Settings remain usable if stored data is invalid or storage is unavailable.
+  }
+}
+
+function saveProvider(saved: SavedProvider) {
+  try {
+    localStorage.setItem(providerStorageKey,JSON.stringify(saved));
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function selectTab(selected: HTMLButtonElement) {
   for (const tab of tabs) {
@@ -115,6 +139,20 @@ function syncProvider() {
     el("settings-error").textContent = "";
   }
   displayedProvider = selected;
+}
+
+function restoreProvider() {
+  const saved = readSavedProvider();
+  const option = Array.from(providerSelect.options).find(item => item.value === saved?.provider);
+  if (saved && option) {
+    providerSelect.value = option.value;
+    if (option.value === "custom") customEndpoint = saved.endpoint;
+  }
+  syncProvider();
+  if (saved && option && completionURL(endpointInput.value) === completionURL(saved.endpoint)) {
+    modelInput.value = saved.model;
+    keyInput.value = saved.key ?? "";
+  }
 }
 function spriteStatus(stage?: string) {
   sprite.textContent = stage || (config ? "Sprite enabled · Settings" : "Sprite offline · Settings");
@@ -224,7 +262,10 @@ settingsForm.addEventListener("invalid",event=>{
 providerSelect.addEventListener("input", syncProvider);
 providerSelect.addEventListener("change", syncProvider);
 endpointInput.oninput=()=>{
-  if (providerSelect.value === "custom") customEndpoint = endpointInput.value;
+  if (providerSelect.value === "custom" && customEndpoint !== endpointInput.value) {
+    customEndpoint = endpointInput.value;
+    keyInput.value = "";
+  }
   clearModelList();
 };
 keyInput.oninput=clearModelList;
@@ -263,26 +304,34 @@ fetchModelsButton.onclick=async()=>{
 el("dismiss").onclick=()=>settings.close();
 el("disconnect").onclick=()=>{
   config=undefined;keyInput.value="";resetHistory=true;
+  modelInput.value = modelSelect.value || modelInput.value;
   clearModelList();
+  const saved = readSavedProvider();
+  const cleared = !saved?.key || saveProvider({...saved,key:undefined});
   spriteStatus();settings.close();print("Sprite disconnected. Use MUD verbs or !command.");
+  if (!cleared) print("Could not remove the saved API key from browser storage.");
 };
 settingsForm.onsubmit=e=>{
   e.preventDefault();
   syncProvider();
   try {
-    const endpoint=completionURL(endpointInput.value.trim());
+    const base = endpointInput.value.trim();
+    const endpoint=completionURL(base);
     const model=modelSelect.value || modelInput.value.trim();
     if (!model) throw Error("Enter the model ID supplied by your provider.");
     const options = readSpriteOptions();
-    config={endpoint,model,key:keyInput.value.trim(),options};
+    const key = keyInput.value.trim();
+    config={endpoint,model,key,options};
+    const saved = saveProvider({provider:providerSelect.value,endpoint:base,model,key:key || undefined});
     resetHistory=true;spriteStatus();settings.close();
     print(options.name + " enabled. Speak naturally, or use !command to run a script directly.");
+    if (!saved) print("Could not save connection settings in this browser.");
     input.focus();
   } catch(error) {
     selectTab(tabs[0]);
     el("settings-error").textContent=error instanceof Error ? error.message : "Invalid settings";
   }
 };
-syncProvider();
+restoreProvider();
 syncMode();
 start();
