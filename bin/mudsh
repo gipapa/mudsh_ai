@@ -14,13 +14,31 @@ root=$(cd -- "$(dirname "$launcher")/.." && pwd -P)
 image=mudsh-ai:local
 
 run_console() {
-  if ! command -v node >/dev/null 2>&1 || [[ ! -f "$root/dist-native/console.mjs" ]]; then
+  local node_command= built_node=
+  if [[ -r "$root/dist-native/node-path" ]]; then
+    IFS= read -r built_node < "$root/dist-native/node-path" || built_node=
+  fi
+  # A fresh login may not have loaded the version manager used to build mudsh.
+  if [[ $1 == login && -x "$built_node" ]]; then
+    node_command=$built_node
+  else
+    node_command=$(command -v node) || node_command=
+  fi
+  if [[ ! -x "$node_command" ]]; then
+    for node_command in /opt/homebrew/bin/node /usr/local/bin/node; do
+      if [[ -x "$node_command" ]]; then break; fi
+    done
+  fi
+  if [[ ! -x "$node_command" ]]; then
+    node_command=$built_node
+  fi
+  if [[ ! -x "$node_command" || ! -f "$root/dist-native/console.mjs" ]]; then
     echo "Install Node.js 24 and run npm ci && npm run build to prepare mudsh." >&2
     exit 1
   fi
   export MUDSH_LAUNCHER="$root/bin/mudsh"
   unset MUDSH_GAME_ROOT
-  exec node "$root/dist-native/console.mjs" "$root" "$@"
+  exec "$node_command" "$root/dist-native/console.mjs" "$root" "$@"
 }
 
 raw_bash() {
@@ -76,13 +94,14 @@ case ${1-} in
     printf '%s\n' 'mudsh               Open a local MUD shell backed by Bash' \
       'mudsh play          Play the dungeon in an isolated MUD shell' \
       'mudsh sprite setup  Configure the sprite and its model' \
+      'mudsh --login       Open a MUD session with Bash login startup' \
       'mudsh --bash        Open an ordinary interactive Bash session' \
       'mudsh play --bash   Play the dungeon in ordinary interactive Bash' \
       'mudsh build-image   Build the playable container from the local project'
     ;;
   *)
     case ${1-} in
-      -l|--login) (( $# == 1 )) && run_console host ;;
+      -l|--login) (( $# == 1 )) && run_console login ;;
     esac
     if (( $# )); then exec /bin/bash "$@"; fi
     run_console host

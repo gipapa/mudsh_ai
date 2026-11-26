@@ -24,3 +24,6 @@ fflate 0.8.2 is used for gzip archive fixtures and browser decompression
 under the MIT License. The web build includes its license at
 licenses/fflate.txt. The local Docker image includes it at
 /opt/mudsh/fflate-LICENSE.
+
+The local MUD terminal uses node-pty 1.1.0 under the MIT License.
+Its notice is in node_modules/node-pty/LICENSE.

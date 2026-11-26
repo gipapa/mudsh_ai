@@ -1,7 +1,16 @@
 import { build } from "esbuild";
 import { createHash } from "node:crypto";
-import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+// node-pty 1.1.0 ships the macOS prebuilt spawn helper without its execute bit.
+if (process.platform === "darwin") {
+  const helper = new URL(`prebuilds/darwin-${process.arch}/spawn-helper`,import.meta.resolve("node-pty/package.json"));
+  await chmod(fileURLToPath(helper),0o755).catch(error => {
+    if (error.code !== "ENOENT") throw error;
+  });
+}
 
 await mkdir("dist/licenses", { recursive: true });
 // Adapted from AgentGoRound's MIT-licensed cwd patch. Preserve Unix command case.
@@ -35,7 +44,8 @@ await build({entryPoints:["src/native.ts"], outfile:"dist-native/game.mjs", bund
   target:"node24", format:"esm", legalComments:"eof"});
 await build({entryPoints:["src/native-console.ts"], outfile:"dist-native/console.mjs", bundle:true, platform:"node",
   packages:"external", target:"node24", format:"esm", legalComments:"eof"});
-for (const file of ["Dockerfile","shell.bash","play.bash","bridge.bash"]) await copyFile("native/" + file, "dist-native/" + file);
+for (const file of ["Dockerfile","shell.bash","play.bash","bridge.bash","terminal.bash"]) await copyFile("native/" + file, "dist-native/" + file);
+await writeFile("dist-native/node-path",process.execPath + "\n");
 for (const file of ["index.html","style.css","LICENSE"]) await copyFile(file, "dist/" + file);
 await copyFile("node_modules/just-bash/LICENSE","dist/licenses/just-bash.txt");
 await copyFile("licenses/pi.txt","dist/licenses/pi.txt");

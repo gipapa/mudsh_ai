@@ -1,0 +1,8 @@
+#!/bin/bash
+# A dedicated chsh entry point also works when the OS strips login argv[0]
+# while resolving a script's shebang.
+launcher=$(cd -- "$(dirname "$0")/.." && pwd -P)/mudsh
+if (( $# == 0 )); then
+  set -- --login
+fi
+exec "$launcher" "$@"

@@ -1,5 +1,6 @@
-import { createInterface } from "node:readline";
+import { clearLine, createInterface, cursorTo } from "node:readline";
 import { join } from "node:path";
+import { PassThrough } from "node:stream";
 import { loadSettings, spriteSettings } from "./native-settings.ts";
 import { BashSession, NativeWorld } from "./native-shell.ts";
 import { playTurn, type Progress, type SpriteConfig, type SpriteHistory } from "./sprite.ts";
@@ -13,13 +14,14 @@ function print(text: string) {
   if (text) process.stdout.write(text + (text.endsWith("\n") ? "" : "\n"));
 }
 
-async function consoleSession(root: string, dungeon: boolean) {
+async function consoleSession(root: string, dungeon: boolean, login: boolean) {
   const launcher = join(root,"bin/mudsh");
-  const bash = new BashSession(root,dungeon,launcher);
+  const terminal = process.stdin.isTTY && process.stdout.isTTY
+    ? new (await import("./native-terminal.ts")).TerminalBash(root,dungeon,login,launcher)
+    : undefined;
+  const bash = terminal ?? new BashSession(root,dungeon,launcher,login);
   const game = new NativeWorld(bash,dungeon);
   const history: SpriteHistory = [];
-  const terminal = !!(process.stdin.isTTY && process.stdout.isTTY);
-  // The foreground Bash command receives SIGINT from the terminal as well.
   const interrupt = () => {};
   process.on("SIGINT",interrupt);
   try {
@@ -35,28 +37,89 @@ async function consoleSession(root: string, dungeon: boolean) {
     status();
     if (dungeon) print(safeText(await game.run("look")));
 
-    const rl = createInterface({input:process.stdin, output:process.stdout, terminal, historySize:500});
+    const editor = terminal ? new PassThrough() : undefined;
+    const rl = createInterface({input:editor ?? process.stdin, output:process.stdout, terminal:!!terminal, historySize:500,
+      completer: (line, callback) => {
+        game.complete(line,!!config).then(([matches,prefix]) => {
+          callback(null,[matches.filter(item => !/\p{Cc}/u.test(item)),prefix]);
+        },error => callback(error));
+      }});
     if (terminal) rl.on("SIGINT",() => {
       rl.write(null,{ctrl:true,name:"u"});
       print("^C");
       rl.prompt();
     });
     let exitStatus = 0;
-    try {
-      const prompt = () => {
-        if (!terminal) return;
-        const location = safeText(game.title(game.cwd));
-        rl.setPrompt(`mudsh [${location}] ❯ `);
-        rl.prompt();
+    let editingBash = false;
+    let handlingLine = false;
+    let deferredInput: Buffer[] = [];
+    const prompt = () => {
+      if (!terminal) return;
+      const location = safeText(game.title(game.cwd));
+      rl.setPrompt(`mudsh [${location}] ❯ `);
+      rl.prompt();
+    };
+    const feed = (chunk: Buffer) => {
+      for (let index = 0; index < chunk.length; index++) {
+        if (editingBash || terminal?.acceptsInput) {
+          terminal!.write(chunk.subarray(index));
+          return;
+        }
+        if (handlingLine) {
+          deferredInput.push(chunk.subarray(index));
+          return;
+        }
+        editor?.write(chunk.subarray(index,index + 1));
+      }
+    };
+    const resume = () => {
+      handlingLine = false;
+      prompt();
+      const chunks = deferredInput;
+      deferredInput = [];
+      for (const chunk of chunks) feed(chunk);
+    };
+    if (terminal && editor) {
+      let background = "";
+      terminal.onBackgroundOutput = data => {
+        background += data;
+        const end = background.lastIndexOf("\n");
+        if (end < 0) return;
+        cursorTo(process.stdout,0);
+        clearLine(process.stdout,0);
+        process.stdout.write(background.slice(0,end + 1));
+        background = background.slice(end + 1);
+        if (!handlingLine && !editingBash) rl.prompt(true);
       };
+      rl.on("line",() => { handlingLine = true; });
+      editor.on("keypress",(text: string) => {
+        if ((text !== "!" && text !== "！") || !/^\s*[!！]$/u.test(rl.line)) return;
+        rl.line = "";
+        rl.cursor = 0;
+        cursorTo(process.stdout,0);
+        clearLine(process.stdout,0);
+        editingBash = true;
+        terminal.edit().then(result => {
+          editingBash = false;
+          game.updateShellState(result);
+          exitStatus = result.exitCode;
+          if (game.ended) rl.close();
+          else resume();
+        }, error => {
+          editingBash = false;
+          print(safeText(describe(error)));
+          resume();
+        });
+      });
+      process.stdin.setRawMode(true);
+      process.stdin.on("data",feed);
+      void terminal.wait().then(() => rl.close());
+    }
+    try {
       prompt();
       for await (const input of rl) {
         const line = input.trimStart();
         if (line.trim()) {
-          if (terminal) {
-            rl.pause();
-            process.stdin.setRawMode(false);
-          }
           try {
             const mode = route(line,!!config);
             if (/^\/sprite(?:\s|$)/u.test(line)) {
@@ -106,15 +169,16 @@ async function consoleSession(root: string, dungeon: boolean) {
           }
         }
         if (game.ended || bash.exitCode !== undefined) break;
-        if (terminal) {
-          process.stdin.setRawMode(true);
-          rl.resume();
-        }
-        prompt();
+        resume();
       }
     } finally {
       rl.close();
-      if (terminal) process.stdin.setRawMode(false);
+      if (terminal) {
+        process.stdin.off("data",feed);
+        process.stdin.setRawMode(false);
+        process.stdin.pause();
+        editor?.destroy();
+      }
     }
     return bash.exitCode ?? (!terminal ? exitStatus : 0);
   } finally {
@@ -126,7 +190,7 @@ async function consoleSession(root: string, dungeon: boolean) {
 const [root,mode,...args] = process.argv.slice(2);
 try {
   if (mode === "settings") await spriteSettings(args);
-  else process.exitCode = await consoleSession(root,mode === "dungeon");
+  else process.exitCode = await consoleSession(root,mode === "dungeon",mode === "login");
 } catch (error) {
   process.stderr.write(safeText(describe(error)) + "\n");
   process.exitCode = 1;

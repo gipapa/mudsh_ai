@@ -7,9 +7,14 @@ import { campaignHelp } from "./campaign-world.ts";
 import { messages, sceneForSeed } from "./en.ts";
 import { Expedition, startPath, type Entry, type WorldIO } from "./world.ts";
 
-type Result = Awaited<ReturnType<WorldIO["shell"]>>;
-type Request = { resolve: (result: Result) => void; reject: (error: Error) => void };
-type ShellMode = "manual" | "capture" | "inspect";
+export type ShellResult = Awaited<ReturnType<WorldIO["shell"]>>;
+type Request = { resolve: (result: ShellResult) => void; reject: (error: Error) => void };
+export type ShellMode = "manual" | "capture" | "inspect";
+export interface ShellSession {
+  exitCode?: number;
+  run(script: string, mode: ShellMode): Promise<ShellResult>;
+  close(): Promise<number>;
+}
 
 export class BashSession {
   private child: ChildProcess;
@@ -23,7 +28,7 @@ export class BashSession {
   private finished: Promise<number>;
   exitCode?: number;
 
-  constructor(root: string, private dungeon: boolean, launcher: string) {
+  constructor(root: string, private dungeon: boolean, launcher: string, login = false) {
     const token = randomBytes(16).toString("hex");
     this.marker = Buffer.from("\0" + token + "\0");
     if (dungeon) {
@@ -31,7 +36,8 @@ export class BashSession {
       this.input = this.child.stdin!;
       this.child.stdout!.on("data", this.receive);
     } else {
-      this.child = spawn("/bin/bash", [join(root,"native/bridge.bash"),"host",token,join(root,"native/shell.bash")],
+      this.child = spawn("/bin/bash", [...(login ? ["--login"] : []),
+        join(root,"native/bridge.bash"),"host",token,join(root,"native/shell.bash")],
         {stdio:[process.stdin.isTTY ? "inherit" : "ignore","inherit","inherit","pipe","pipe"]});
       this.input = this.child.stdio[3] as Writable;
       const replies = this.child.stdio[4] as Readable;
@@ -117,7 +123,7 @@ export class BashSession {
       this.child.kill("SIGTERM");
     }, 120000);
     try {
-      return await new Promise<Result>((resolve,reject) => {
+      return await new Promise<ShellResult>((resolve,reject) => {
         this.request = {resolve,reject};
         this.input.write(mode + "\0" + script + "\0");
       });
@@ -167,7 +173,7 @@ const settingsHelp = "Use /sprite on, /sprite off, or /sprite status. Run mudsh 
 export class NativeWorld extends Expedition {
   readonly shellInstructions: string;
 
-  constructor(readonly bash: BashSession, private dungeon: boolean) {
+  constructor(readonly bash: ShellSession, private dungeon: boolean) {
     super({
       list: () => this.list(),
       read: path => this.readText(path),
@@ -190,9 +196,13 @@ export class NativeWorld extends Expedition {
 
   async execute(script: string, mode: ShellMode = "capture") {
     const result = await this.bash.run(script,mode);
+    this.updateShellState(result);
+    return result;
+  }
+
+  updateShellState(result: ShellResult) {
     this.move(result.cwd);
     this.ended = this.bash.exitCode !== undefined;
-    return result;
   }
 
   private async list(): Promise<Entry[]> {
@@ -209,6 +219,25 @@ export class NativeWorld extends Expedition {
     if (result.stdout.includes("\0") || result.stdout.length > 65536)
       return "Use ! with a shell tool such as head, file or strings to inspect this object.";
     return result.stdout;
+  }
+
+  async complete(line: string, online: boolean): Promise<[string[], string]> {
+    const input = line.trimStart();
+    const sprite = ["/sprite on", "/sprite off", "/sprite status"];
+    if (online) return [sprite.filter(option => option.startsWith(input)),input];
+    const argument = /^(go|read)\s+(.*)$/iu.exec(input);
+    if (argument) {
+      const [,verb,prefix] = argument;
+      if (verb.toLowerCase() === "go") {
+        const {exits} = await this.survey();
+        return [[...exits.flatMap(exit => [exit.name,exit.direction]),".."].filter(item => item.startsWith(prefix)),prefix];
+      }
+      const {stdout} = await this.execute("compgen -f -- " + quote(prefix),"inspect");
+      return [stdout.split("\n").filter(Boolean),prefix];
+    }
+    const options = ["look", "go ", "back", "read ", "help", "quit", ...sprite,
+      ...(this.dungeon ? ["hint","submit ","check","next","progress","resume"] : ["play"])];
+    return [options.filter(option => option.startsWith(input)),input];
   }
 
   override async run(input: string) {

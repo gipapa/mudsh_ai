@@ -1,6 +1,6 @@
 # The launcher loads this inside Bash so movement changes the current shell.
 if [[ -z ${MUDSH_GAME_ROOT-} ]]; then
-  if [[ -r ~/.bashrc ]]; then
+  if ! shopt -q login_shell && [[ -r ~/.bashrc ]]; then
     . ~/.bashrc
   fi
   mudsh() { command "$MUDSH_LAUNCHER" "$@"; }
@@ -32,7 +32,7 @@ else
   unset _mudsh_start
   if [[ $- == *i* ]]; then
     PS1='mudsh [\W] \$ '
-    mudsh look
+    if [[ ${1-} != --mudsh-terminal ]]; then mudsh look; fi
   fi
 fi
 

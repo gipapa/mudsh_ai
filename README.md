@@ -4,7 +4,7 @@
 
 ## Use mudsh locally
 
-Use Bash on macOS or Linux and Node.js 24 with npm. For the isolated dungeon, also run Docker Engine or Docker Desktop.
+Use Bash on macOS or Linux and Node.js 24 with npm. If `npm ci` needs to compile `node-pty`, install the Xcode command-line tools on macOS or a C++ compiler, Make and Python 3 on Linux. For the isolated dungeon, also run Docker Engine or Docker Desktop.
 
 ```sh
 npm ci
@@ -14,11 +14,24 @@ npm run build
 ./bin/mudsh play               # enter the dungeon in an isolated MUD shell
 ```
 
-Run `npm link` from this repository to put `mudsh` on your PATH. You can also use the executable's absolute path as your terminal's shell command. Prefix a command with `!` or `！` to run it immediately in Bash. Pipes, redirects, variables and directory changes work across turns. With the sprite active, bare input goes to the sprite. Offline, use `look`, `go DIRECTORY`, `back`, `read FILE`, `help`, or `quit`.
+Run `npm link` from this repository to put `mudsh` on your PATH. At the MUD prompt, type `!` or `！` to edit and run a command in Bash. Tab uses Bash's Readline and programmable completions. Use Ctrl-Z to stop a foreground job, then `!jobs`, `!bg`, or `!fg` from the MUD prompt. Pipes, redirects, variables and directory changes work across turns. With the sprite active, bare input goes to the sprite. Offline, use `look`, `go DIRECTORY`, `back`, `read FILE`, `help`, or `quit`. In this mode, Tab also completes MUD verbs and paths for `go` and `read`.
 
 In the dungeon, offline verbs include `hint`, `submit ANSWER`, `check`, `next`, `progress`, and `resume`. You can also run them as Bash commands, for example `!mudsh hint` and `!mudsh submit "$answer"`. Exit with `!exit` or Ctrl-D. Use `mudsh --bash` for an ordinary interactive Bash prompt and `mudsh play --bash` for one in the dungeon. Dungeon commands that require their own interactive terminal can use `mudsh play --bash`.
 
 Dungeon mode runs as an unprivileged user in a Docker container. It has a read-only base image, no external network, dropped capabilities, and CPU, memory and process limits. It mounts a named Docker volume for the dungeon files and progress, plus a temporary filesystem. Host directories and the Docker socket are outside the container. The local mudsh process makes the sprite's API requests and sends its Bash commands into the container. Run `MUDSH_PROFILE=practice ./bin/mudsh play` to start or resume a separate save named `practice`.
+
+### Set mudsh as your login shell
+
+Build the project in a directory you intend to keep. From that directory, run the login launcher once to try it, then register its absolute path and select it with `chsh`.
+
+```sh
+mudsh_login="$(pwd -P)/bin/login/mudsh"
+"$mudsh_login"
+grep -Fxq -- "$mudsh_login" /etc/shells || printf '%s\n' "$mudsh_login" | sudo tee -a /etc/shells
+chsh -s "$mudsh_login"
+```
+
+Open a new login terminal to see the MUD prompt. `!shopt -q login_shell && echo "login shell"` confirms that Bash is running in login mode. The session loads `/etc/profile` and the first readable file among `~/.bash_profile`, `~/.bash_login` and `~/.profile`. To switch back from the MUD prompt, run `!chsh -s /bin/bash` or substitute the path of your previous shell, such as `/bin/zsh` on macOS.
 
 ### Connect the local sprite
 
