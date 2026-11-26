@@ -32,6 +32,9 @@ else
   unset _mudsh_start
   if [[ $- == *i* ]]; then
     PS1='mudsh [\W] \$ '
+    if [[ -t 1 && ${TERM-} != dumb && -z ${NO_COLOR-} ]]; then
+      PS1='\[\e[32m\]mudsh [\W] \$\[\e[0m\] '
+    fi
     if [[ ${1-} != --mudsh-terminal ]]; then mudsh look; fi
   fi
 fi

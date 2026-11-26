@@ -13,7 +13,61 @@ done
 root=$(cd -- "$(dirname "$launcher")/.." && pwd -P)
 image=mudsh-ai:local
 
+# Parse the user's file as literal data even if its contents are shell code.
+read_rc() {
+  local rc="${HOME:?}/.mudshrc" number=1
+  harbor_project=
+  npm_registry=
+  export MUDSH_ALLOW_REMOTE_HTTP=false
+  [[ -e $rc || -L $rc ]] || return 0
+  if [[ ! -f $rc || ! -r $rc ]]; then
+    echo "Cannot read ~/.mudshrc as a regular file." >&2
+    return 2
+  fi
+  if ! parse_rc < "$rc"; then
+    echo "Invalid ~/.mudshrc at line $number. See the repository's .mudshrc example." >&2
+    return 2
+  fi
+}
+
+parse_rc() {
+  local line key value
+  local harbor_pattern='^[a-z0-9][a-z0-9.-]*(:[0-9]+)?(/[a-z0-9]+([._-][a-z0-9]+)*)+$'
+  local npm_pattern='^https?://(\[[0-9a-fA-F:]+\]|[a-zA-Z0-9.-]+)(:[0-9]+)?(/[a-zA-Z0-9._~/-]*)?$'
+  IFS= read -r line || [[ -n $line ]] || return 1
+  [[ ${line%$'\r'} == 'return 0' ]] || return 1
+  while IFS= read -r line || [[ -n $line ]]; do
+    number=$((number + 1))
+    line=${line%$'\r'}
+    case $line in ''|'#'*) continue ;; esac
+    [[ $line == *=* ]] || return 1
+    key=${line%%=*}
+    value=${line#*=}
+    case $key in
+      harbor_project)
+        [[ -z $value || $value =~ $harbor_pattern ]] || return 1
+        harbor_project=$value
+        ;;
+      npm_registry)
+        [[ -z $value || $value =~ $npm_pattern ]] || return 1
+        npm_registry=$value
+        ;;
+      allow_remote_http)
+        [[ $value == true || $value == false ]] || return 1
+        MUDSH_ALLOW_REMOTE_HTTP=$value
+        ;;
+      *) return 1 ;;
+    esac
+  done
+  return 0
+}
+
 run_console() {
+  if ! read_rc; then
+    # Keep the login shell available to repair a malformed rc.
+    if [[ $1 != login ]]; then exit 2; fi
+    export MUDSH_ALLOW_REMOTE_HTTP=false
+  fi
   local node_command= built_node=
   if [[ -r "$root/dist-native/node-path" ]]; then
     IFS= read -r built_node < "$root/dist-native/node-path" || built_node=
@@ -53,12 +107,19 @@ case ${1-} in
     shift
     run_console settings "$@"
     ;;
+  install-deps)
+    read_rc
+    cd -- "$root"
+    if [[ -n $npm_registry ]]; then exec npm ci --registry "$npm_registry"; fi
+    exec npm ci
+    ;;
   build-image)
+    read_rc
     if [[ ! -f "$root/dist-native/game.mjs" ]]; then
       echo "Run npm run build to prepare the native image." >&2
       exit 1
     fi
-    exec docker build --tag "$image" "$root/dist-native"
+    exec docker build --tag "$image" --build-arg "NODE_IMAGE=${harbor_project:+$harbor_project/}node:24-bookworm-slim" "$root/dist-native"
     ;;
   play)
     shift
@@ -79,12 +140,15 @@ case ${1-} in
     tty=()
     if [[ ${1-} != --bridge && -t 0 && -t 1 ]]; then tty=(--tty); fi
     if [[ ${1-} == --bash ]]; then shift; fi
+    color_env=()
+    if [[ -n ${NO_COLOR-} ]]; then color_env+=(--env NO_COLOR); fi
+    if [[ ${TERM-} == dumb ]]; then color_env+=(--env TERM=dumb); fi
     exec docker run --rm --interactive "${tty[@]}" --init \
       --name "mudsh-ai-$profile" --network none --read-only --cap-drop ALL \
       --security-opt no-new-privileges --pids-limit 96 --memory 256m --cpus 1 \
       --mount "type=volume,source=mudsh-ai-save-$profile,target=/expedition" \
       --tmpfs /tmp:rw,nosuid,nodev,noexec,size=16m \
-      "$image" "$@"
+      "${color_env[@]}" "$image" "$@"
     ;;
   --bash)
     shift
@@ -97,6 +161,7 @@ case ${1-} in
       'mudsh --login       Open a MUD session with Bash login startup' \
       'mudsh --bash        Open an ordinary interactive Bash session' \
       'mudsh play --bash   Play the dungeon in ordinary interactive Bash' \
+      'mudsh install-deps  Install project dependencies from the configured npm registry' \
       'mudsh build-image   Build the playable container from the local project'
     ;;
   *)

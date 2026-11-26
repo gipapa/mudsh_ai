@@ -10,6 +10,12 @@ test("accept base and full endpoint URLs",()=>{
   assert.equal(completionURL("https://example.org/api/v1/"),"https://example.org/api/v1/chat/completions");
   assert.equal(completionURL("http://localhost:8080/v1/chat/completions"),"http://localhost:8080/v1/chat/completions");
   assert.throws(()=>completionURL("http://example.org/v1"));
+  for (const buildURL of [modelsURL,completionURL]) {
+    assert.throws(()=>buildURL("http://ai.example/v1"));
+    assert.match(buildURL("http://ai.example/v1",true),/^http:\/\/ai\.example\/v1\//);
+    for (const base of ["ftp://ai.example","http://user@ai.example","http://ai.example/?key=1","http://ai.example/#fragment"])
+      assert.throws(()=>buildURL(base,true));
+  }
   assert.equal(modelsURL("https://api.groq.com/openai/v1"),"https://api.groq.com/openai/v1/models");
   assert.equal(modelsURL("https://api.openai.com/v1/chat/completions"),"https://api.openai.com/v1/models");
 });

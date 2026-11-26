@@ -7,6 +7,7 @@ let history: SpriteHistory = [];
 self.onmessage = async ({data}) => {
   let output = "";
   let offline = false;
+  let failed = false;
   let speaker: string | undefined;
   try {
     if ("save" in data) game = await createDungeon(data.save);
@@ -23,13 +24,13 @@ self.onmessage = async ({data}) => {
       output = result.output;
       offline = !!result.offline;
     }
-  } catch (error) { output = String(error); }
+  } catch (error) { failed = true; output = String(error); }
   if (!game) {
     self.postMessage({error: output || "Unable to open the dungeon."});
     return;
   }
   const endings = game.completions.splice(0);
-  const status = {output,ended:game.ended,offline,speaker,endings,save:game.save};
+  const status = {output,ended:game.ended,offline,failed,speaker,endings,save:game.save};
   try {
     const room = await game.survey();
     self.postMessage({...status,room});

@@ -1,0 +1,8 @@
+return 0
+# Copy to ~/.mudshrc and edit the literal values below.
+# Harbor project containing the node:24-bookworm-slim image (host[:port]/project).
+harbor_project=
+# Registry for mudsh install-deps. An empty value uses npm's configured registry.
+npm_registry=
+# Permit plaintext HTTP connections to an AI provider outside loopback.
+allow_remote_http=false

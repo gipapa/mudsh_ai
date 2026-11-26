@@ -7,7 +7,7 @@
 Use Bash on macOS or Linux and Node.js 24 with npm. If `npm ci` needs to compile `node-pty`, install the Xcode command-line tools on macOS or a C++ compiler, Make and Python 3 on Linux. For the isolated dungeon, also run Docker Engine or Docker Desktop.
 
 ```sh
-npm ci
+./bin/mudsh install-deps
 npm run build
 ./bin/mudsh                    # MUD shell in your current directory
 ./bin/mudsh build-image        # build once, then rebuild after game updates
@@ -19,6 +19,20 @@ Run `npm link` from this repository to put `mudsh` on your PATH. At the MUD prom
 In the dungeon, offline verbs include `hint`, `submit ANSWER`, `check`, `next`, `progress`, and `resume`. You can also run them as Bash commands, for example `!mudsh hint` and `!mudsh submit "$answer"`. Exit with `!exit` or Ctrl-D. Use `mudsh --bash` for an ordinary interactive Bash prompt and `mudsh play --bash` for one in the dungeon. Dungeon commands that require their own interactive terminal can use `mudsh play --bash`.
 
 Dungeon mode runs as an unprivileged user in a Docker container. It has a read-only base image, no external network, dropped capabilities, and CPU, memory and process limits. It mounts a named Docker volume for the dungeon files and progress, plus a temporary filesystem. Host directories and the Docker socket are outside the container. The local mudsh process makes the sprite's API requests and sends its Bash commands into the container. Run `MUDSH_PROFILE=practice ./bin/mudsh play` to start or resume a separate save named `practice`.
+
+### Configure local downloads and HTTP endpoints
+
+Copy the repository's `.mudshrc` to `~/.mudshrc` and edit it before running the launcher. Keep `return 0` on the first line so that accidentally sourcing the file returns immediately. mudsh reads the following lines as literal `key=value` data. Use one setting per line, without shell quoting or variable expansion. Lines beginning with `#` are comments.
+
+| Setting | Example | Effect |
+| --- | --- | --- |
+| `harbor_project` | `harbor.example.org/dockerhub/library` | `mudsh build-image` uses `harbor.example.org/dockerhub/library/node:24-bookworm-slim` as its base. Leave empty for the Docker Hub Node image. |
+| `npm_registry` | `https://packages.example.org/npm/` | `./bin/mudsh install-deps` runs `npm ci` in this repository using that registry. Leave empty to use npm's own registry settings. |
+| `allow_remote_http` | `true` | Permits HTTP AI endpoints on any host for the native sprite, including model discovery and both sprite modes. The default is `false`, which allows HTTPS and loopback HTTP. Restart mudsh after editing this setting. |
+
+Use Docker and npm's usual login mechanisms for private registries. HTTP sends the sprite's API key and conversation in cleartext. The browser accepts HTTPS and loopback HTTP.
+
+The terminal highlights the prompt in green, the sprite name in cyan and errors in red. Set `NO_COLOR=1` to disable mudsh's terminal colors. Piped mudsh output is plain text.
 
 ### Set mudsh as your login shell
 

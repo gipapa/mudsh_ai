@@ -22,7 +22,7 @@ export async function playAdvancedTurn(game: SpriteWorld, line: string, config: 
   progress: Progress, history: SpriteHistory): Promise<SpriteTurnResult> {
   const options = config.options ?? defaultSpriteOptions;
   const deadline = AbortSignal.timeout(options.deadlineSeconds * 1000);
-  const baseUrl = completionURL(config.endpoint).replace(/\/chat\/completions$/, "");
+  const baseUrl = completionURL(config.endpoint,config.allowRemoteHttp).replace(/\/chat\/completions$/, "");
   const model: Model<"openai-completions"> = {
     id: config.model, name: config.model, api: "openai-completions", provider: "mudsh",
     baseUrl, reasoning: !!options.effort, input: ["text"],

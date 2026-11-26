@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -18,6 +18,46 @@ test("the native launcher runs normal Bash in the caller's filesystem", t => {
     {cwd:workspace, encoding:"utf8"});
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /^\d+\.\d+/);
+});
+
+test("the launcher reads literal registry settings and sourcing the rc returns immediately", t => {
+  const account = mkdtempSync(join(tmpdir(),"mudsh-rc-"));
+  t.after(() => rmSync(account,{recursive:true,force:true}));
+  const rc = join(account,".mudshrc");
+  const env = {...process.env, HOME:account, PATH:account + ":" + process.env.PATH};
+  for (const command of ["docker","npm"]) {
+    writeFileSync(join(account,command),'#!/bin/sh\nprintf "%s\\n" "$@"\n',{mode:0o755});
+  }
+  const run = (command: string) => spawnSync(launcher,[command],{env,encoding:"utf8"});
+  writeFileSync(rc,"return 0\r\nharbor_project=harbor.example:5443/proxy/library\r\nnpm_registry=https://npm.example/npm/");
+  assert.match(run("build-image").stdout,/^NODE_IMAGE=harbor\.example:5443\/proxy\/library\/node:24-bookworm-slim$/m);
+  assert.equal(run("install-deps").stdout,"ci\n--registry\nhttps://npm.example/npm/\n");
+  const marker = join(account,"executed");
+  for (const entry of [`npm_registry=$(touch "${marker}")`, `touch "${marker}"`, "allow_remote_http=yes"]) {
+    writeFileSync(rc,"return 0\n" + entry + "\n");
+    assert.equal(spawnSync("/bin/bash",["-c",'. "$HOME/.mudshrc"'],{env}).status,0);
+    const result = run("install-deps");
+    assert.equal(result.status,2);
+    assert.match(result.stderr,/Invalid ~\/.mudshrc at line 2/);
+    assert.equal(existsSync(marker),false);
+  }
+});
+
+test("remote HTTP sprite settings require an explicit native rc opt-in", t => {
+  const account = mkdtempSync(join(tmpdir(),"mudsh-http-"));
+  t.after(() => rmSync(account,{recursive:true,force:true}));
+  const env = {...process.env, HOME:account, XDG_CONFIG_HOME:account, MUDSH_ALLOW_REMOTE_HTTP:"true"};
+  const directory = join(account,"mudsh-ai");
+  mkdirSync(directory);
+  writeFileSync(join(directory,"sprite.json"),JSON.stringify({
+    endpoint:"http://ai.example/v1",model:"fixture",key:"",allowRemoteHttp:true,
+  }));
+  const show = () => spawnSync(launcher,["sprite","show"],{env,encoding:"utf8"});
+  assert.equal(show().status,1);
+  writeFileSync(join(account,".mudshrc"),"return 0\nallow_remote_http=true\n");
+  assert.equal(show().status,0);
+  writeFileSync(join(account,".mudshrc"),"return 0\nallow_remote_http=false\n");
+  assert.match(show().stderr,/Use HTTPS or a loopback HTTP endpoint/);
 });
 
 test("the native state keeps room changes and restores progress", t => {

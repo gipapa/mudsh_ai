@@ -1,7 +1,7 @@
 import { route, type Expedition } from "./world.ts";
 import { defaultSpriteOptions, sampling, type SpriteOptions } from "./sprite-options.ts";
 
-export interface SpriteConfig { endpoint: string; model: string; key: string; options?: SpriteOptions }
+export interface SpriteConfig { endpoint: string; model: string; key: string; options?: SpriteOptions; allowRemoteHttp?: boolean }
 export interface SpriteTurnResult { output: string; offline?: boolean }
 export interface ModelInfo { id: string; ownedBy?: string; active?: boolean }
 type Message = {role: "system" | "user" | "assistant"; content: string};
@@ -10,10 +10,10 @@ export type Progress = (stage: "thinking" | "executing" | "summarizing" | "outpu
 export type SpriteWorld = Pick<Expedition, "io" | "cwd" | "history" | "ended" | "scene" |
   "title" | "survey" | "move" | "run"> & { shellInstructions?: string };
 
-export function completionURL(base: string) {
+export function completionURL(base: string, allowRemoteHttp = false) {
   const url = new URL(base);
   const local = ["localhost","127.0.0.1","[::1]"].includes(url.hostname);
-  if (url.protocol !== "https:" && !(local && url.protocol === "http:"))
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && (local || allowRemoteHttp)))
     throw Error("Use HTTPS or a loopback HTTP endpoint.");
   if (url.username || url.password || url.search || url.hash)
     throw Error("Enter a base URL without credentials, query or fragment.");
@@ -22,16 +22,8 @@ export function completionURL(base: string) {
   return url.href;
 }
 
-export function modelsURL(base: string) {
-  const url = new URL(base);
-  const local = ["localhost","127.0.0.1","[::1]"].includes(url.hostname);
-  if (url.protocol !== "https:" && !(local && url.protocol === "http:"))
-    throw Error("Use HTTPS or a loopback HTTP endpoint.");
-  if (url.username || url.password || url.search || url.hash)
-    throw Error("Enter a base URL without credentials, query or fragment.");
-  const path = url.pathname.replace(/\/chat\/completions\/?$/, "").replace(/\/+$/, "");
-  url.pathname = path + "/models";
-  return url.href;
+export function modelsURL(base: string, allowRemoteHttp = false) {
+  return completionURL(base,allowRemoteHttp).replace(/\/chat\/completions$/, "/models");
 }
 
 const quotaCodes = new Set([
@@ -80,8 +72,8 @@ export async function providerLimitError(response: Response) {
   return new ProviderLimitError("Provider denied the request (HTTP 429). Check API quota and usage limits, or wait before retrying if rate limited");
 }
 
-export async function listModels(endpoint: string, key: string, signal?: AbortSignal): Promise<ModelInfo[]> {
-  const url = modelsURL(endpoint);
+export async function listModels(endpoint: string, key: string, signal?: AbortSignal, allowRemoteHttp = false): Promise<ModelInfo[]> {
+  const url = modelsURL(endpoint,allowRemoteHttp);
   const timeout = AbortSignal.timeout(15000);
   const requestSignal = signal ? AbortSignal.any([timeout, signal]) : timeout;
   let body;
@@ -113,7 +105,7 @@ export async function listModels(endpoint: string, key: string, signal?: AbortSi
 
 async function complete(config: SpriteConfig, messages: Message[]) {
   const options = config.options ?? defaultSpriteOptions;
-  const res = await fetch(completionURL(config.endpoint), {
+  const res = await fetch(completionURL(config.endpoint,config.allowRemoteHttp), {
     method:"POST", redirect:"error", credentials:"omit", referrerPolicy:"no-referrer",
     signal:AbortSignal.timeout(options.timeoutSeconds * 1000),
     headers:{"Content-Type":"application/json", ...(config.key ? {Authorization:"Bearer "+config.key} : {})},

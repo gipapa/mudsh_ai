@@ -10,6 +10,11 @@ import { messages } from "./en.ts";
 
 const safeText = (text: string) => text.replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/gu,"");
 const describe = (error: unknown) => error instanceof Error ? error.message : String(error);
+const colors = {prompt:32, sprite:36, error:31} as const;
+function color(text: string, role: keyof typeof colors) {
+  return process.stdout.isTTY && !process.env.NO_COLOR && process.env.TERM !== "dumb"
+    ? `\x1b[${colors[role]}m${text}\x1b[0m` : text;
+}
 function print(text: string) {
   if (text) process.stdout.write(text + (text.endsWith("\n") ? "" : "\n"));
 }
@@ -28,11 +33,11 @@ async function consoleSession(root: string, dungeon: boolean, login: boolean) {
     const start = await game.execute(":");
     if (game.ended) throw Error(`Bash exited during startup (exit ${start.exitCode}).`);
     let config: SpriteConfig | undefined = await loadSettings().catch(error => {
-      print("Sprite offline. " + safeText(describe(error)));
+      print(color("Sprite offline. " + safeText(describe(error)),"error"));
       return undefined;
     });
     const spriteName = () => config?.options?.name ?? defaultSpriteOptions.name;
-    const status = () => print(config ? `${spriteName()} is online (${config.options?.mode ?? "simple"}).` :
+    const status = () => print(config ? `${color(spriteName(),"sprite")} is online (${config.options?.mode ?? "simple"}).` :
       "Sprite offline. Use help or !command.");
     status();
     if (dungeon) print(safeText(await game.run("look")));
@@ -56,7 +61,7 @@ async function consoleSession(root: string, dungeon: boolean, login: boolean) {
     const prompt = () => {
       if (!terminal) return;
       const location = safeText(game.title(game.cwd));
-      rl.setPrompt(`mudsh [${location}] ❯ `);
+      rl.setPrompt(color(`mudsh [${location}] ❯`,"prompt") + " ");
       rl.prompt();
     };
     const feed = (chunk: Buffer) => {
@@ -104,10 +109,13 @@ async function consoleSession(root: string, dungeon: boolean, login: boolean) {
           game.updateShellState(result);
           exitStatus = result.exitCode;
           if (game.ended) rl.close();
-          else resume();
+          else {
+            if (exitStatus) print(color(`Exit ${exitStatus}`,"error"));
+            resume();
+          }
         }, error => {
           editingBash = false;
-          print(safeText(describe(error)));
+          print(color(safeText(describe(error)),"error"));
           resume();
         });
       });
@@ -141,31 +149,32 @@ async function consoleSession(root: string, dungeon: boolean, login: boolean) {
               else {
                 const result = await game.execute(script,"manual");
                 exitStatus = result.exitCode;
-                if (!game.ended && exitStatus) print(`Exit ${exitStatus}`);
+                if (!game.ended && exitStatus) print(color(`Exit ${exitStatus}`,"error"));
               }
             } else if (mode === "sprite" && config) {
-              const name = safeText(spriteName());
+              const speaker = color(safeText(spriteName()) + " ❯","sprite");
               const progress: Progress = (stage,text) => {
-                if (stage === "executing") print(`${name} ❯ ${safeText(text ?? "")}`);
+                if (stage === "executing") print(`${speaker} ${safeText(text ?? "")}`);
                 if (stage === "output") print(safeText(text ?? ""));
               };
               try {
                 const result = config.options?.mode === "advanced"
                   ? await (await import("./sprite-agent.ts")).playAdvancedTurn(game,line,config,progress,history)
                   : await playTurn(game,line,config,progress,history);
-                print(`${name} ❯ ${safeText(result.output)}`);
+                const reply = safeText(result.output);
+                print(`${speaker} ${result.offline ? color(reply,"error") : reply}`);
                 if (result.offline) {
                   config = undefined;
                   history.length = 0;
                 }
               } catch (error) {
-                print(`${name} ❯ ${safeText(describe(error))}`);
+                print(`${speaker} ${color(safeText(describe(error)),"error")}`);
               }
             } else {
               print(safeText(await game.run(line)));
             }
           } catch (error) {
-            print(safeText(describe(error)));
+            print(color(safeText(describe(error)),"error"));
           }
         }
         if (game.ended || bash.exitCode !== undefined) break;

@@ -7,6 +7,7 @@ import { Writable } from "node:stream";
 import { completionURL, listModels, type SpriteConfig } from "./sprite.ts";
 import { defaultSpriteOptions, spriteNumbers, type SpriteNumber, type SpriteOptions } from "./sprite-options.ts";
 
+const allowRemoteHttp = process.env.MUDSH_ALLOW_REMOTE_HTTP === "true";
 const presets = {openai:"https://api.openai.com/v1",groq:"https://api.groq.com/openai/v1"} as const;
 const directory = join(process.env.XDG_CONFIG_HOME || join(homedir(),".config"),"mudsh-ai");
 const path = join(directory,"sprite.json");
@@ -60,7 +61,7 @@ function setOption(options: SpriteOptions, name: string, value: unknown) {
   }
 }
 
-export async function loadSettings(): Promise<Settings | undefined> {
+export async function loadSettings(forSetup = false): Promise<Settings | undefined> {
   const contents = await readFile(path,"utf8").catch(error => {
     if (error.code !== "ENOENT") throw error;
   });
@@ -69,19 +70,24 @@ export async function loadSettings(): Promise<Settings | undefined> {
   if (typeof config?.endpoint !== "string" || typeof config.key !== "string" ||
       typeof config.model !== "string" || !config.model.trim() || !printable(config.model))
     throw Error("Sprite settings are invalid.");
-  completionURL(config.endpoint);
+  try {
+    completionURL(config.endpoint,allowRemoteHttp);
+  } catch (error) {
+    if (forSetup) return undefined;
+    throw error;
+  }
   const options = {...defaultSpriteOptions};
   for (const [name,value] of Object.entries(config.options ?? {})) {
     if (Object.hasOwn(defaultSpriteOptions,name) || name === "effort" || name === "temperature") setOption(options,name,value);
   }
-  return {endpoint:config.endpoint, model:config.model, key:config.key, options};
+  return {allowRemoteHttp, endpoint:config.endpoint, model:config.model, key:config.key, options};
 }
 
-async function save(config: Settings) {
+async function save({endpoint,model,key,options}: Settings) {
   await mkdir(directory,{recursive:true,mode:0o700});
   const temporary = join(directory,".sprite-" + randomUUID());
   try {
-    await writeFile(temporary,JSON.stringify(config,null,2) + "\n",{flag:"wx",mode:0o600});
+    await writeFile(temporary,JSON.stringify({endpoint,model,key,options},null,2) + "\n",{flag:"wx",mode:0o600});
     await rename(temporary,path);
   } finally {
     await rm(temporary,{force:true});
@@ -109,8 +115,8 @@ async function setup(previous?: Settings) {
       ? await ask(`API base URL${previous ? ` [${previous.endpoint}]` : ""}: `) || previous?.endpoint || ""
       : presets[provider as keyof typeof presets];
     if (!endpoint) throw Error("Choose openai, groq, or a custom API base URL.");
-    completionURL(endpoint);
-    const sameEndpoint = previous && completionURL(previous.endpoint) === completionURL(endpoint);
+    completionURL(endpoint,allowRemoteHttp);
+    const sameEndpoint = previous && completionURL(previous.endpoint,allowRemoteHttp) === completionURL(endpoint,allowRemoteHttp);
     process.stdout.write(`API key (hidden${sameEndpoint && previous.key ? ", enter to keep, - to clear" : ", optional for local providers"}): `);
     hidden = true;
     let entered: string;
@@ -120,7 +126,7 @@ async function setup(previous?: Settings) {
     let models: Awaited<ReturnType<typeof listModels>> = [];
     if (/^y(es)?$/i.test(await ask("Fetch available models? [y/N]: "))) {
       try {
-        models = (await listModels(endpoint,key,canceled.signal)).filter(({id}) => printable(id));
+        models = (await listModels(endpoint,key,canceled.signal,allowRemoteHttp)).filter(({id}) => printable(id));
         models.slice(0,30).forEach(({id},i) => console.log(`  ${i+1}. ${id}`));
         if (models.length) console.log("Enter a number to select a model, or type its ID. Prefix a numeric ID with id:.");
         if (models.length > 30) console.log("First 30 shown. Enter any model ID manually.");
@@ -159,7 +165,7 @@ Options: mode, name, summarize, temperature, effort, instructions, ${Object.keys
     return;
   }
   if (command === "setup") {
-    await setup(await loadSettings().catch(error => {
+    await setup(await loadSettings(true).catch(error => {
       if (error instanceof SyntaxError || error.message === "Sprite settings are invalid.") return undefined;
       throw error;
     }));
@@ -169,7 +175,7 @@ Options: mode, name, summarize, temperature, effort, instructions, ${Object.keys
   if (!config) throw Error("Run mudsh sprite setup first.");
   switch (command) {
     case "models":
-      for (const {id} of await listModels(config.endpoint,config.key)) {
+      for (const {id} of await listModels(config.endpoint,config.key,undefined,allowRemoteHttp)) {
         if (printable(id)) console.log(id);
       }
       break;

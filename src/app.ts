@@ -184,9 +184,16 @@ function watchdog(ms: number) {
   clearTimeout(timer);
   timer=window.setTimeout(()=>fail("Interpreter stopped responding. Choose Restart dungeon to try again."),ms);
 }
-function print(value:string, kind="") {
-  if (!value) return;
-  const pre=document.createElement("pre"); pre.className=kind; pre.textContent=value;
+function print(value:string, kind="", prefix="") {
+  if (!value && !prefix) return;
+  const pre=document.createElement("pre");
+  pre.className=kind;
+  if (prefix) {
+    const label=document.createElement("span");
+    label.textContent=prefix;
+    pre.append(label);
+  }
+  pre.append(value);
   log.append(pre); log.scrollTop=log.scrollHeight;
 }
 function controls() {
@@ -211,11 +218,11 @@ function render(room:Room) {
   }
 }
 function fail(message:string) {
-  clearTimeout(timer);worker.terminate();ended=true;busy=false;controls();print(message);
+  clearTimeout(timer);worker.terminate();ended=true;busy=false;controls();print(message,"console-error");
 }
 function send(line:string, worldAction = false) {
   if(busy||ended||!line.trim())return;
-  history.push(line);cursor=history.length;input.value="";print("❯ "+line,"typed");
+  history.push(line);cursor=history.length;input.value="";print(line,"typed","❯ ");
   busy=true;controls();worker.postMessage({line,config:worldAction ? undefined : config,resetHistory:!worldAction && resetHistory});
   if (!worldAction) resetHistory=false;
   watchdog(10000);
@@ -238,7 +245,7 @@ function start(save = readCampaign() ?? {seed:crypto.getRandomValues(new Uint32A
       const timeout = config?.options?.timeoutSeconds ?? defaultSpriteOptions.timeoutSeconds;
       watchdog(executing ? 10000 : (timeout + 15) * 1000);
       spriteStatus(data.speaker + (executing ? " acting…" : data.stage === "thinking" ? " listening…" : " describing…"));
-      if (executing && data.text) print(data.speaker + " ❯ " + data.text,"typed");
+      if (executing && data.text) print(data.text,"speaker",data.speaker + " ❯ ");
       return;
     }
     if (data.offline) {config=undefined;resetHistory=true;}
@@ -248,8 +255,8 @@ function start(save = readCampaign() ?? {seed:crypto.getRandomValues(new Uint32A
     el("progress").textContent=`${data.save.completed} / ${campaignRooms.length} rooms cleared`;
     const index=roomIndex(startPath,data.room.cwd);
     el("next-room").hidden=!(index >= 0 && index < data.save.completed && index + 1 < campaignRooms.length);
-    if (data.speaker && data.output) print(data.speaker + " ❯","typed");
-    print(data.output);
+    print(data.output,data.offline || data.failed ? "console-error" : (data.speaker ? "speaker" : ""),
+      data.speaker && data.output ? data.speaker + " ❯ " : "");
     for (const ending of data.endings) print(messages.objectiveComplete + "\n" + ending,"goal-success");
     if(first){print(data.room.title+"\n"+data.room.description,"intro");
       print("Read objective.txt to begin. Type help for MUD verbs, or !ls to use the shell.");first=false;}
