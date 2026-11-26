@@ -11,6 +11,10 @@ import { spawn } from "node-pty";
 const launcher = fileURLToPath(new URL("../bin/mudsh",import.meta.url));
 const loginLauncher = fileURLToPath(new URL("../bin/login/mudsh",import.meta.url));
 const prompt = /mudsh \[[^\r\n]+\] ❯ /u;
+const stripTerminalControls = (text: string) => text
+  // GitHub-hosted runners add OSC 3008 shell-integration markers to PTY output.
+  .replace(/\x1b\][^\x07]*?(?:\x07|\x1b\\)/gu,"")
+  .replace(/\x1b\[[0-?]*[ -/]*[@-~]|\r/gu,"");
 
 function fixture(t: TestContext, file: string, args: string[], env: NodeJS.ProcessEnv = {}) {
   const cwd = mkdtempSync(join(tmpdir(),"mudsh-terminal-"));
@@ -31,7 +35,7 @@ function fixture(t: TestContext, file: string, args: string[], env: NodeJS.Proce
   });
   const wait = async (pattern: RegExp) => {
     for (let attempt = 0; attempt < 200; attempt++) {
-      const visible = output.replace(/\x1b\[[0-?]*[ -/]*[@-~]|\r/gu,"");
+      const visible = stripTerminalControls(output);
       const match = pattern.exec(visible.slice(offset));
       if (match) {
         offset += match.index + match[0].length;
