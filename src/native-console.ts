@@ -1,25 +1,30 @@
+import { chatGPTLogin, chatGPTProvider } from "./native-chatgpt.ts";
+import { objectText } from "./object-text.ts";
 import { clearLine, createInterface, cursorTo } from "node:readline";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import { loadSettings, spriteSettings } from "./native-settings.ts";
 import { BashSession, NativeWorld } from "./native-shell.ts";
-import { playTurn, type Progress, type SpriteConfig, type SpriteHistory } from "./sprite.ts";
+import { playTurn, type Progress, type SpriteHistory } from "./sprite.ts";
 import { defaultSpriteOptions } from "./sprite-options.ts";
 import { route } from "./world.ts";
 import { messages } from "./en.ts";
 
 const safeText = (text: string) => text.replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/gu,"");
 const describe = (error: unknown) => error instanceof Error ? error.message : String(error);
-const colors = {prompt:32, sprite:36, error:31} as const;
+const colors = {prompt:32, sprite:36, error:31, object:34} as const;
 function color(text: string, role: keyof typeof colors) {
   return process.stdout.isTTY && !process.env.NO_COLOR && process.env.TERM !== "dumb"
     ? `\x1b[${colors[role]}m${text}\x1b[0m` : text;
+}
+function printWorld(text: string) {
+  print(objectText(safeText(text),value => color(value,"object")));
 }
 function print(text: string) {
   if (text) process.stdout.write(text + (text.endsWith("\n") ? "" : "\n"));
 }
 
-async function consoleSession(root: string, dungeon: boolean, login: boolean) {
+async function consoleSession(root: string, dungeon: boolean, login: boolean, chatgpt: boolean) {
   const launcher = join(root,"bin/mudsh");
   const terminal = process.stdin.isTTY && process.stdout.isTTY
     ? new (await import("./native-terminal.ts")).TerminalBash(root,dungeon,login,launcher)
@@ -32,7 +37,8 @@ async function consoleSession(root: string, dungeon: boolean, login: boolean) {
   try {
     const start = await game.execute(":");
     if (game.ended) throw Error(`Bash exited during startup (exit ${start.exitCode}).`);
-    let config: SpriteConfig | undefined = await loadSettings().catch(error => {
+    const connect = async () => chatgpt ? chatGPTProvider() : loadSettings();
+    let config = await connect().catch(error => {
       print(color("Sprite offline. " + safeText(describe(error)),"error"));
       return undefined;
     });
@@ -40,7 +46,7 @@ async function consoleSession(root: string, dungeon: boolean, login: boolean) {
     const status = () => print(config ? `${color(spriteName(),"sprite")} is online (${config.options?.mode ?? "simple"}).` :
       "Sprite offline. Use help or !command.");
     status();
-    if (dungeon) print(safeText(await game.run("look")));
+    if (dungeon) printWorld(await game.run("look"));
 
     const editor = terminal ? new PassThrough() : undefined;
     const rl = createInterface({input:editor ?? process.stdin, output:process.stdout, terminal:!!terminal, historySize:500,
@@ -133,7 +139,7 @@ async function consoleSession(root: string, dungeon: boolean, login: boolean) {
             if (/^\/sprite(?:\s|$)/u.test(line)) {
               switch (line.trim().split(/\s+/u).slice(1).join(" ")) {
                 case "on": {
-                  config = await loadSettings();
+                  config = await connect();
                   history.length = 0;
                   if (config) status();
                   else print("Run mudsh sprite setup first.");
@@ -158,7 +164,7 @@ async function consoleSession(root: string, dungeon: boolean, login: boolean) {
                 if (stage === "output") print(safeText(text ?? ""));
               };
               try {
-                const result = config.options?.mode === "advanced"
+                const result = !("respond" in config) && config.options?.mode === "advanced"
                   ? await (await import("./sprite-agent.ts")).playAdvancedTurn(game,line,config,progress,history)
                   : await playTurn(game,line,config,progress,history);
                 const reply = safeText(result.output);
@@ -171,7 +177,7 @@ async function consoleSession(root: string, dungeon: boolean, login: boolean) {
                 print(`${speaker} ${color(safeText(describe(error)),"error")}`);
               }
             } else {
-              print(safeText(await game.run(line)));
+              printWorld(await game.run(line));
             }
           } catch (error) {
             print(color(safeText(describe(error)),"error"));
@@ -199,7 +205,8 @@ async function consoleSession(root: string, dungeon: boolean, login: boolean) {
 const [root,mode,...args] = process.argv.slice(2);
 try {
   if (mode === "settings") await spriteSettings(args);
-  else process.exitCode = await consoleSession(root,mode === "dungeon",mode === "login");
+  else if (mode === "chatgpt" && args.length) chatGPTLogin(args[0],args.slice(1));
+  else process.exitCode = await consoleSession(root,mode === "dungeon",mode === "login",mode === "chatgpt");
 } catch (error) {
   process.stderr.write(safeText(describe(error)) + "\n");
   process.exitCode = 1;

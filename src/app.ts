@@ -1,3 +1,4 @@
+import { appendObjectText } from "./object-text.ts";
 import { messages } from "./en.ts";
 import { campaignName, campaignRooms, roomIndex, validSave, type CampaignSave } from "./campaign.ts";
 import { startPath } from "./world.ts";
@@ -193,7 +194,8 @@ function print(value:string, kind="", prefix="") {
     label.textContent=prefix;
     pre.append(label);
   }
-  pre.append(value);
+  if (!kind || kind === "intro") appendObjectText(pre,value);
+  else pre.append(value);
   log.append(pre); log.scrollTop=log.scrollHeight;
 }
 function controls() {

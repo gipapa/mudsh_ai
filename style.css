@@ -35,3 +35,5 @@ footer{margin:21px auto;padding-bottom:18px}dialog{background:var(--panel);color
 #settings-error:empty{display:none}
 .section-title .status{font:13px var(--mono);color:var(--muted)}
 .status.active:before{background:var(--gold)}
+
+.object-ref,.exit,.file{color:#99c5e7}

@@ -1,3 +1,4 @@
+import { objectText } from "./object-text.ts";
 import { randomBytes, randomUUID } from "node:crypto";
 import { lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -62,6 +63,11 @@ async function load() {
   return save;
 }
 
+function printRoom(text: string) {
+  const colored = process.stdout.isTTY && !process.env.NO_COLOR && process.env.TERM !== "dumb";
+  console.log(colored ? objectText(text,value => `\x1b[34m${value}\x1b[0m`) : text);
+}
+
 async function main(command: string, args: string[]) {
   const save = await load();
   const max = lastOpenRoom(save);
@@ -85,8 +91,8 @@ async function main(command: string, args: string[]) {
   if (!room || index > max) return error("Enter an unlocked room first. Use mudsh resume to find it.");
 
   switch (command) {
-    case "look": console.log(room.title + "\n" + room.description + "\n" + room.task); return;
-    case "hint": console.log(room.hint); return;
+    case "look": printRoom(room.title + "\n" + room.description + "\n" + room.task); return;
+    case "hint": printRoom(room.hint); return;
     case "next":
       if (index >= save.completed) return error("Solve this room to open the next door.");
       if (index + 1 >= campaignRooms.length) return error("The last room is complete.");

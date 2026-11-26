@@ -103,6 +103,10 @@ raw_bash() {
 }
 
 case ${1-} in
+  chatgpt)
+    shift
+    run_console chatgpt "$@"
+    ;;
   sprite)
     shift
     run_console settings "$@"
@@ -157,6 +161,8 @@ case ${1-} in
   --help)
     printf '%s\n' 'mudsh               Open a local MUD shell backed by Bash' \
       'mudsh play          Play the dungeon in an isolated MUD shell' \
+      'mudsh chatgpt       Open a local MUD shell using your ChatGPT login' \
+      'mudsh chatgpt login Sign in with ChatGPT through the Codex CLI' \
       'mudsh sprite setup  Configure the sprite and its model' \
       'mudsh --login       Open a MUD session with Bash login startup' \
       'mudsh --bash        Open an ordinary interactive Bash session' \

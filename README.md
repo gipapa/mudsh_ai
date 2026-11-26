@@ -32,7 +32,7 @@ Copy the repository's `.mudshrc` to `~/.mudshrc` and edit it before running the 
 
 Use Docker and npm's usual login mechanisms for private registries. HTTP sends the sprite's API key and conversation in cleartext. The browser accepts HTTPS and loopback HTTP.
 
-The terminal highlights the prompt in green, the sprite name in cyan and errors in red. Set `NO_COLOR=1` to disable mudsh's terminal colors. Piped mudsh output is plain text.
+The terminal highlights the prompt in green, the sprite name in cyan, file and directory references in blue, and errors in red. Set `NO_COLOR=1` to disable mudsh's terminal colors. Piped mudsh output is plain text.
 
 ### Set mudsh as your login shell
 
@@ -60,6 +60,22 @@ Open a new login terminal to see the MUD prompt. `!shopt -q login_shell && echo 
 Setup offers OpenAI, Groq, and custom OpenAI-compatible APIs. You can fetch and select a model or type its ID. Simple mode chooses one action by default. Advanced mode uses Pi Core to act on command results in sequence and requires a model that supports streaming tool calls. Both modes display the sprite's name before its commands and reply. Use `/sprite off` to switch to MUD verbs and `/sprite on` to reload saved settings and reconnect. Rate limits interrupt the current turn and keep the sprite enabled.
 
 Settings are shared by both local modes. The key is stored in plain text in `${XDG_CONFIG_HOME:-~/.config}/mudsh-ai/sprite.json` with file permissions `0600`. In the host shell, the sprite's commands run immediately with your account's permissions. The API provider receives the request and directory context, and may also receive shell output used for summaries or further actions.
+
+### Use ChatGPT in the regular host shell
+
+Install the OpenAI Codex CLI (`npm install -g @openai/codex`) and run:
+
+```sh
+mudsh chatgpt login       # reuse an existing ChatGPT sign-in or open the browser
+mudsh chatgpt status      # check the login
+mudsh chatgpt             # start the local MUD shell with the ChatGPT sprite
+```
+
+For a terminal without a browser, use `mudsh chatgpt login --device-auth`. Complete the sign-in on the device shown by Codex. An existing Codex API-key login still requires a ChatGPT sign-in.
+
+In this shell, type a request to speak to ChatGPT or use `!command` to run Bash directly. ChatGPT uses the simple sprite flow. Each request sends the current directory survey and recent conversation through Codex. Actions run in your existing local Bash session. Use `/sprite off` and `/sprite on` to disconnect and reconnect during the session. The usual `mudsh` and `mudsh play` commands use the provider saved by `mudsh sprite setup`.
+
+Codex manages the login and token refresh. On another trusted machine, use device login or, for Codex file-based storage, transfer `~/.codex/auth.json` over SSH into that user's Codex configuration directory and restrict it to the owner (`0600`). OS keyring credentials require signing in on the destination. [OpenAI authentication and headless login](https://learn.chatgpt.com/docs/auth)
 
 ## Play in the browser
 
