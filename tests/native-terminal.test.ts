@@ -19,7 +19,7 @@ const stripTerminalControls = (text: string) => text
 function fixture(t: TestContext, file: string, args: string[], env: NodeJS.ProcessEnv = {}) {
   const cwd = mkdtempSync(join(tmpdir(),"mudsh-terminal-"));
   const child = spawn(file,args,{cwd, cols:100, rows:24, env:{...process.env,
-    TERM:"xterm-256color", HISTFILE:"/dev/null", INPUTRC:"/dev/null",
+    TERM:"xterm-256color", NO_COLOR:"", HISTFILE:"/dev/null", INPUTRC:"/dev/null",
     BASH_SILENCE_DEPRECATION_WARNING:"1", XDG_CONFIG_HOME:join(cwd,"config"), ...env}});
   let output = "";
   let offset = 0;
@@ -46,7 +46,8 @@ function fixture(t: TestContext, file: string, args: string[], env: NodeJS.Proce
     }
     assert.fail(`Expected ${pattern} in terminal output\n${output}`);
   };
-  return {cwd, wait, send:(text: string) => child.write(text), exited};
+  return {cwd, wait, send:(text: string) => child.write(text), exited,
+    assertOutput:(pattern: RegExp) => assert.match(output,pattern)};
 }
 
 async function verifyJobs(session: ReturnType<typeof fixture>) {
@@ -77,6 +78,20 @@ test("the MUD terminal delegates Tab and job control to the same live Bash", {ti
   const {cwd,send,wait,exited} = session;
   mkdirSync(join(cwd,"library"));
   writeFileSync(join(cwd,"library","rare note.txt"),"file completion worked\n");
+  await wait(prompt);
+  send("help\r");
+  await wait(/back \/ go back +Return to the previous directory/u);
+  await wait(prompt);
+  session.assertOutput(/\x1b\[33mback \/ go back\x1b\[0m/u);
+  send("look\r");
+  await wait(/\n(?:north|east|south|west) · \[library\]\n/u);
+  await wait(prompt);
+  session.assertOutput(/\[\x1b\[34mlibrary\x1b\[0m\]/u);
+  send("go lib\t\r");
+  await wait(/\nback · \[mudsh-terminal-[^\]]+\]\nObjects: rare note\.txt\n/u);
+  await wait(/mudsh \[library\] ❯ /u);
+  send("go ba\t\r");
+  await wait(/\n(?:north|east|south|west) · \[library\]\n/u);
   await wait(prompt);
   send("go lib\t\r");
   await wait(/mudsh \[library\] ❯ /u);

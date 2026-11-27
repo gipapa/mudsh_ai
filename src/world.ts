@@ -1,4 +1,5 @@
-import { directions, help, messages, sceneForSeed } from "./en.ts";
+import { help, messages, sceneForSeed } from "./en.ts";
+import { assignDirections, directoryName, formatSurvey, hash } from "./room-survey.ts";
 
 export const startPath = "/expedition";
 export interface Entry { name: string; directory: boolean }
@@ -7,11 +8,6 @@ export interface WorldIO {
   read(path: string): Promise<string>;
   shell(script: string, cwd: string): Promise<{stdout: string; stderr: string; cwd: string; exitCode: number}>;
   resolve(cwd: string, path: string): string;
-}
-function hash(text: string) {
-  let value = 2166136261;
-  for (const c of text) value = Math.imul(value ^ c.charCodeAt(0), 16777619);
-  return value >>> 0;
 }
 export function initialFiles(seed: number) {
   const scene = sceneForSeed(seed);
@@ -63,22 +59,21 @@ export class Expedition {
   description(path: string) {
     return path === startPath ? this.scene.description : this.location(path)?.description ?? this.scene.interior;
   }
-  async survey() {
-    const entries = (await this.io.list(this.cwd)).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
-    const dirs = entries.filter(e => e.directory);
-    const assigned = this.assignments.get(this.cwd) ?? new Map<string, string>();
-    this.assignments.set(this.cwd, assigned);
-    for (const old of assigned.keys()) if (!dirs.some(d => d.name === old)) assigned.delete(old);
-    for (const {name} of dirs) {
-      if (assigned.has(name)) continue;
-      const free = directions.filter(d => ![...assigned.values()].includes(d));
-      if (free.length) assigned.set(name, free[hash(this.seed + this.cwd + name) % free.length]);
-    }
-    return {cwd: this.cwd, title: this.title(this.cwd),
-      description: this.description(this.cwd),
-      exits: dirs.map(({name}) => ({name, direction: assigned.get(name) ?? "", title: this.title(this.io.resolve(this.cwd, name))})),
+  get previousCwd() { return this.history.at(-1); }
+  async survey(cwd = this.cwd) {
+    const entries = (await this.io.list(cwd)).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+    const dirs = entries.filter(e => e.directory).map(e => e.name);
+    const assigned = this.assignments.get(cwd) ?? new Map<string, string>();
+    this.assignments.set(cwd, assigned);
+    const exits = assignDirections(dirs, this.seed + cwd, assigned);
+    const previous = cwd === this.cwd ? this.previousCwd : this.cwd;
+    return {cwd, title: this.title(cwd),
+      description: this.description(cwd),
+      exits: exits.map(exit => ({...exit, title: this.title(this.io.resolve(cwd, exit.name))})),
+      back: previous === undefined ? undefined : directoryName(previous),
       files: entries.filter(e => !e.directory).map(e => e.name)};
   }
+  async look(cwd = this.cwd) { return formatSurvey(await this.survey(cwd)); }
   move(path: string) {
     if (path !== this.cwd) { this.history.push(this.cwd); this.cwd = path; }
   }
@@ -86,6 +81,13 @@ export class Expedition {
     const result = await this.io.shell(script, this.cwd);
     this.move(result.cwd);
     return result.stdout + result.stderr || (result.exitCode ? "Exit " + result.exitCode : "");
+  }
+  async back() {
+    const previous = this.previousCwd;
+    if (!previous) return messages.noBack;
+    await this.io.list(previous);
+    this.history.pop(); this.cwd = previous;
+    return this.look();
   }
   async run(input: string): Promise<string> {
     if (this.ended) return messages.closed;
@@ -98,13 +100,7 @@ export class Expedition {
     switch (verb?.toLowerCase()) {
       case "help": return [...help, ...(this.scene.chest ? [messages.unlockHelp] : [])].join("\n");
       case "quit": this.ended = true; return messages.quit;
-      case "back": {
-        const previous = this.history.at(-1);
-        if (!previous) return messages.noBack;
-        await this.io.list(previous);
-        this.history.pop(); this.cwd = previous;
-        return this.title(this.cwd);
-      }
+      case "back": return this.back();
       case "read": return arg ? this.io.read(this.io.resolve(this.cwd, arg)) : messages.missingFile;
       case "unlock": {
         if (!this.scene.chest) return messages.noChest;
@@ -112,16 +108,14 @@ export class Expedition {
         return this.runShell("unlock " + arg);
       }
       case "go": {
+        if (arg.toLowerCase() === "back") return this.back();
         const {exits} = await this.survey();
-        const exit = exits.find(e => e.name === arg) ?? exits.find(e => e.direction && e.direction === arg.toLowerCase());
+        const exit = exits.find(e => e.name === arg) ?? exits.find(e => e.direction === arg.toLowerCase());
         if (!exit) return messages.missingExit;
         this.move(this.io.resolve(this.cwd, exit.name));
-        return this.title(this.cwd) + "\n" + this.description(this.cwd);
+        return this.look();
       }
-      case "look": {
-        const room = await this.survey();
-        return [room.title, room.description, ...room.exits.map(e => (e.direction || "exit") + " · " + e.title + " [" + e.name + "/]"), "Objects: " + (room.files.join(", ") || "none")].join("\n");
-      }
+      case "look": return this.look();
       default: return messages.unknown;
     }
   }

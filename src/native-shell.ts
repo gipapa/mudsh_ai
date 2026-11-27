@@ -143,6 +143,9 @@ const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
 const listEntries = `(
   shopt -s nullglob
   shopt -u dotglob
+  if [[ -n \${OLDPWD-} && $OLDPWD != "$PWD" && -d $OLDPWD ]]; then
+    builtin printf 'p%s\\0' "$OLDPWD"
+  fi
   for _mudsh_entry in "$PWD"/*; do
     if [[ -d $_mudsh_entry ]]; then _mudsh_type=d; else _mudsh_type=f; fi
     builtin printf '%s%s\\0' "$_mudsh_type" "\${_mudsh_entry##*/}"
@@ -161,7 +164,7 @@ Utilities include find, grep, file, tar, md5sum, strings, base64 and exiftool.`;
 
 const localHelp = `look                 Survey the current directory
 go NAME              Enter a directory by name or direction
-back                 Return to the previous directory
+back / go back       Return to the previous directory
 read FILE            Read a text file
 play                 Enter the isolated dungeon
 !COMMAND             Run a Bash script in this session
@@ -172,6 +175,7 @@ const settingsHelp = "Use /sprite on, /sprite off, or /sprite status. Run mudsh 
 
 export class NativeWorld extends Expedition {
   readonly shellInstructions: string;
+  private oldpwd?: string;
 
   constructor(readonly bash: ShellSession, private dungeon: boolean) {
     super({
@@ -193,6 +197,7 @@ export class NativeWorld extends Expedition {
     const room = this.dungeon ? campaignRooms[roomIndex(startPath,path)] : undefined;
     return room ? room.description + "\n" + room.task : path;
   }
+  override get previousCwd() { return this.oldpwd; }
 
   async execute(script: string, mode: ShellMode = "capture") {
     const result = await this.bash.run(script,mode);
@@ -208,7 +213,9 @@ export class NativeWorld extends Expedition {
   private async list(): Promise<Entry[]> {
     const result = await this.execute(listEntries,"inspect");
     if (result.exitCode) throw Error(result.stderr.trim() || "Unable to survey this directory.");
-    return result.stdout.split("\0").filter(entry => entry[0] === "d" || entry[0] === "f")
+    const entries = result.stdout.split("\0");
+    this.oldpwd = entries[0]?.startsWith("p") ? entries.shift()!.slice(1) : undefined;
+    return entries.filter(entry => entry[0] === "d" || entry[0] === "f")
       .map(entry => ({directory:entry[0] === "d",name:entry.slice(1)}));
   }
 
@@ -229,8 +236,10 @@ export class NativeWorld extends Expedition {
     if (argument) {
       const [,verb,prefix] = argument;
       if (verb.toLowerCase() === "go") {
-        const {exits} = await this.survey();
-        return [[...exits.flatMap(exit => [exit.name,exit.direction]),".."].filter(item => item.startsWith(prefix)),prefix];
+        const {exits,back} = await this.survey();
+        const options = [...exits.flatMap(exit => [exit.name,exit.direction]),".."];
+        if (back !== undefined) options.push("back");
+        return [[...new Set(options)].filter(item => item.startsWith(prefix)),prefix];
       }
       const {stdout} = await this.execute("compgen -f -- " + quote(prefix),"inspect");
       return [stdout.split("\n").filter(Boolean),prefix];
@@ -246,22 +255,29 @@ export class NativeWorld extends Expedition {
     switch (verb) {
       case "help": return (this.dungeon ? campaignHelp : localHelp) + "\n" + settingsHelp;
       case "quit": this.ended = true; return "";
-      case "look": return super.run("look");
+      case "look": return this.look();
       case "read": return arg ? this.readText(arg) : messages.missingFile;
       case "go": {
+        if (arg.toLowerCase() === "back") return this.back();
         const {exits} = await this.survey();
         const exit = exits.find(e => e.name === arg) ?? exits.find(e => e.direction === arg.toLowerCase());
         if (!exit && arg !== "..") return messages.missingExit;
-        return this.changeDirectory(quote(exit?.name ?? ".."));
+        return this.changeDirectory(quote(exit ? "./" + exit.name : ".."));
       }
-      case "back": return this.changeDirectory('"${OLDPWD:?No previous directory}"');
+      case "back": return this.back();
       case "play":
         if (!this.dungeon && !arg) {
           await this.execute("mudsh play","manual");
           return "";
         }
         break;
-      case "hint": case "submit": case "check": case "next": case "resume": case "progress":
+      case "next": case "resume":
+        if (this.dungeon) {
+          const result = await this.execute("_mudsh_move " + verb);
+          return result.exitCode ? result.stdout + result.stderr : this.look();
+        }
+        break;
+      case "hint": case "submit": case "check": case "progress":
         if (this.dungeon) {
           const result = await this.execute("mudsh " + verb + (arg ? " " + quote(arg) : ""));
           return result.stdout + result.stderr;
@@ -271,8 +287,10 @@ export class NativeWorld extends Expedition {
     return messages.unknown;
   }
 
+  override async back() { return this.changeDirectory('"${OLDPWD:?No previous directory}"'); }
+
   private async changeDirectory(path: string) {
     const result = await this.execute("builtin cd -- " + path);
-    return result.exitCode ? result.stderr : this.title(result.cwd) + "\n" + this.description(result.cwd);
+    return result.exitCode ? result.stderr : this.look();
   }
 }

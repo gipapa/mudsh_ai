@@ -5,14 +5,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { objectText } from "../src/object-text.ts";
+import { highlightWorldText } from "../src/object-text.ts";
 import { campaignRooms } from "../src/campaign.ts";
 
 test("room references include the whole name and leave surrounding punctuation plain", () => {
-  const mark = (text: string) => objectText(text, value => "[" + value + "]");
+  const mark = (text: string) => highlightWorldText(text, value => "[" + value + "]");
   assert.equal(mark(campaignRooms[0].task),"Find [night-orders.txt] somewhere under [records/]. Read it and submit the flag inside.");
   assert.equal(mark("Read .dusk-seal, dispatch.tar.gz and copies/receipt.txt."),
     "Read [.dusk-seal], [dispatch.tar.gz] and [copies/receipt.txt].");
+  assert.equal(mark("east-southeast · [manuscripts]\nback · [The Watch Office]"),
+    "east-southeast · [[manuscripts]]\nback · [[The Watch Office]]");
 });
 
 test("the host shell connects through Codex and reuses its login on subsequent sessions", t => {

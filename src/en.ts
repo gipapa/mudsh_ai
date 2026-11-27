@@ -1,8 +1,7 @@
-export const directions = ["north", "east", "south", "west"];
 export const help = [
   "look              Inspect the room, exits and objects",
   "go NAME           Enter an exit by direction or directory",
-  "back              Return to the previous room",
+  "back / go back    Return to the previous room",
   "read FILE         Read an object exactly as written",
   "!COMMAND          Run a shell command in this world",
   "help              Open this field guide",

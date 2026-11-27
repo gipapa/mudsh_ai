@@ -66,14 +66,14 @@ If the destination uses a custom `CODEX_HOME`, change the remote directory in th
 
 | Input | Action |
 | --- | --- |
-| `look`, `go DIRECTORY`, `back`, `read FILE` | Inspect files and navigate with the sprite offline. |
+| `look`, `go EXIT`, `back` or `go back`, `read FILE` | Inspect files and navigate by directory name or compass direction with the sprite offline. |
 | `!command` or `！command` | Run a shell command directly, including when the sprite is online. |
 | A plain-language request | Ask the connected sprite to reply or act. |
 | `help`, `quit` | Show MUD verbs or leave the session with the sprite offline. |
 
 In the local terminal, `!` opens Bash’s own line editor. Tab completes Bash commands and paths. In offline MUD mode, Tab completes verbs and paths for `go` and `read`. Pipes, redirects, shell variables and directory changes work across turns. Use Ctrl-Z to suspend a foreground job, then `!jobs`, `!bg` or `!fg` to manage it. Use `!exit` or Ctrl-D to leave.
 
-The prompt is green, the sprite name is cyan, file and directory references are blue, and errors are red. Set `NO_COLOR=1` for a plain terminal. Piped mudsh output is plain text.
+The prompt is green, the sprite name is cyan, Help command names are yellow, file and directory references are blue, and errors are red. Set `NO_COLOR=1` for a plain terminal. Piped mudsh output is plain text.
 
 ## Playing and saving the dungeon
 

@@ -30,10 +30,44 @@ test("all 13 browser rooms open in order and verify answers and extracted files"
     assert.equal(game.save.completed, index + 1);
     assert.deepEqual(game.completions.splice(0), [room.ending]);
     assert.match(await game.run(submit), /already complete/);
-    if (index + 1 < solutions.length) await game.run("next");
+    if (index + 1 < solutions.length) {
+      const moved = await game.run("next");
+      assert.equal(moved, await game.run("look"));
+      assert.match(moved, /Objects: .*objective\.txt/);
+    }
   }
   assert.match(await game.run("progress"), /13\/13 rooms cleared/);
   assert.equal(game.ended, false);
+});
+
+test("browser navigation prints the full survey and assigns directions beyond the compass points", async () => {
+  const game = await createDungeon({seed:42, completed:0});
+  const start = await game.run("look");
+  assert.doesNotMatch(start, /^back · /m);
+  assert.match(await game.run("go back"), /first room/);
+
+  const records = await game.run("go records");
+  assert.equal(records, await game.run("look"));
+  assert.equal(records + "\n", await game.run("!mudsh look"));
+  assert.match(records, /^[a-z-]+ · \[day\]$/m);
+  assert.match(records, /^back · \[01-watch-office\]$/m);
+  const day = await game.run("Go day");
+  assert.equal(day, await game.run("look"));
+  assert.match(day, /^back · \[records\]$/m);
+  assert.equal(await game.run("go back"), records);
+  assert.equal(await game.run("back"), start);
+
+  await game.run("!mkdir " + Array.from({length:24}, (_, index) => "test-" + index).join(" "));
+  const {exits} = await game.survey();
+  const directions = new Set(exits.map(exit => exit.direction));
+  assert.equal(directions.size, exits.length);
+  for (const direction of ["north", "east", "south", "west", "southeast", "east-southeast"]) {
+    assert.ok(directions.has(direction), direction);
+  }
+  const refined = exits.find(exit => exit.direction.split("-").length > 2);
+  assert.ok(refined);
+  assert.equal(await game.run("go " + refined.direction.toUpperCase()), await game.run("look"));
+  assert.equal((await game.survey()).cwd, "/expedition/01-watch-office/" + refined.name);
 });
 
 test("the browser restores fixed room progress and keeps the same clues", async () => {

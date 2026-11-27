@@ -7,7 +7,7 @@ import { messages, sceneForSeed } from "./en.ts";
 export const campaignHelp = [
   "look                 Inspect the room and its objective",
   "go NAME              Enter an exit by name or direction",
-  "back                 Return to the previous room",
+  "back / go back       Return to the previous room",
   "read FILE            Read a text object",
   "hint                 Ask for a shell hint",
   "submit ANSWER        Submit a flag, filename or number",
@@ -60,7 +60,7 @@ export class Dungeon extends Expedition {
       case "progress": return ok(`${this.save.completed}/${campaignRooms.length} rooms cleared.\n` +
         campaignRooms.slice(0, lastOpenRoom(this.save) + 1).map(({id, title}, i) =>
           `${i < this.save.completed ? "Cleared" : "Open"} · ${title} [${id}]`).join("\n"));
-      case "look": return ok(this.title(cwd) + "\n" + this.description(cwd));
+      case "look": return ok(await this.look(cwd));
       case "hint": return room && index <= lastOpenRoom(this.save) ? ok(room.hint) : fail("Enter an unlocked room first.");
       case "next":
         if (index < 0) return ok(this.path(lastOpenRoom(this.save)));
@@ -92,7 +92,7 @@ export class Dungeon extends Expedition {
     const result = await this.control(command, answer, this.cwd);
     if (command === "next" && result.code === 0) {
       this.move(result.text);
-      return this.title(this.cwd) + "\n" + this.description(this.cwd);
+      return this.look();
     }
     return result.text;
   }

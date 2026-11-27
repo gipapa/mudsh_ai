@@ -37,3 +37,6 @@ footer{margin:21px auto;padding-bottom:18px}dialog{background:var(--panel);color
 .status.active:before{background:var(--gold)}
 
 .object-ref,.exit,.file{color:#99c5e7}
+.help-command{color:var(--gold)}
+.exit{gap:1ch}
+.exit .direction{min-width:0}

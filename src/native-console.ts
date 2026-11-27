@@ -1,5 +1,6 @@
 import { chatGPTLogin, chatGPTProvider } from "./native-chatgpt.ts";
-import { objectText } from "./object-text.ts";
+import { isHelpCommand } from "./object-text.ts";
+import { color, safeText, terminalWorldText } from "./terminal-text.ts";
 import { clearLine, createInterface, cursorTo } from "node:readline";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
@@ -10,16 +11,7 @@ import { defaultSpriteOptions } from "./sprite-options.ts";
 import { route } from "./world.ts";
 import { messages } from "./en.ts";
 
-const safeText = (text: string) => text.replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/gu,"");
 const describe = (error: unknown) => error instanceof Error ? error.message : String(error);
-const colors = {prompt:32, sprite:36, error:31, object:34} as const;
-function color(text: string, role: keyof typeof colors) {
-  return process.stdout.isTTY && !process.env.NO_COLOR && process.env.TERM !== "dumb"
-    ? `\x1b[${colors[role]}m${text}\x1b[0m` : text;
-}
-function printWorld(text: string) {
-  print(objectText(safeText(text),value => color(value,"object")));
-}
 function print(text: string) {
   if (text) process.stdout.write(text + (text.endsWith("\n") ? "" : "\n"));
 }
@@ -46,7 +38,7 @@ async function consoleSession(root: string, dungeon: boolean, login: boolean, ch
     const status = () => print(config ? `${color(spriteName(),"sprite")} is online (${config.options?.mode ?? "simple"}).` :
       "Sprite offline. Use help or !command.");
     status();
-    if (dungeon) printWorld(await game.run("look"));
+    if (dungeon) print(terminalWorldText(await game.look()));
 
     const editor = terminal ? new PassThrough() : undefined;
     const rl = createInterface({input:editor ?? process.stdin, output:process.stdout, terminal:!!terminal, historySize:500,
@@ -177,7 +169,7 @@ async function consoleSession(root: string, dungeon: boolean, login: boolean, ch
                 print(`${speaker} ${color(safeText(describe(error)),"error")}`);
               }
             } else {
-              printWorld(await game.run(line));
+              print(terminalWorldText(await game.run(line), isHelpCommand(line)));
             }
           } catch (error) {
             print(color(safeText(describe(error)),"error"));

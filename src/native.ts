@@ -1,13 +1,27 @@
-import { objectText } from "./object-text.ts";
 import { randomBytes, randomUUID } from "node:crypto";
-import { lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { campaignName, campaignRooms, gradeRoom, lastOpenRoom, roomFiles, roomIndex, validSave, type CampaignSave } from "./campaign.ts";
 import { messages } from "./en.ts";
+import { assignDirections, directoryName, formatSurvey } from "./room-survey.ts";
+import { terminalWorldText } from "./terminal-text.ts";
 
 const directory = process.env.MUDSH_GAME_ROOT || "/expedition";
 const root = await realpath(directory);
 const savePath = join(root, ".mudsh-save.json");
+const bashHelp = [
+  "look                    Inspect the room, exits and objects",
+  "go DIRECTORY            Enter an exit by name or direction",
+  "back / go back          Return to the previous room",
+  "mudsh hint              Ask for a shell hint",
+  "mudsh submit ANSWER     Submit a flag, filename or number",
+  "mudsh check             Verify a room that asks you to create a file",
+  "mudsh next              Enter the next unlocked room",
+  "mudsh resume            Return to the current unlocked room",
+  "mudsh progress          Show cleared rooms",
+  "mudsh help              Open this field guide",
+  "exit                    Leave the dungeon",
+].join("\n");
 
 function error(message: string) {
   process.stderr.write(message + "\n");
@@ -63,15 +77,25 @@ async function load() {
   return save;
 }
 
-function printRoom(text: string) {
-  const colored = process.stdout.isTTY && !process.env.NO_COLOR && process.env.TERM !== "dumb";
-  console.log(colored ? objectText(text,value => `\x1b[34m${value}\x1b[0m`) : text);
+async function entriesAt(path: string) {
+  const entries = (await readdir(path, {withFileTypes:true})).filter(entry => !entry.name.startsWith("."));
+  entries.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+  return Promise.all(entries.map(async entry => ({
+    name: entry.name,
+    directory: entry.isDirectory() || (entry.isSymbolicLink() &&
+      !!(await stat(join(path, entry.name)).catch(() => undefined))?.isDirectory()),
+  })));
 }
 
 async function main(command: string, args: string[]) {
+  if (command === "help") {
+    console.log(terminalWorldText(bashHelp, true));
+    return;
+  }
   const save = await load();
   const max = lastOpenRoom(save);
-  const index = roomIndex(root, await realpath(process.cwd()));
+  const cwd = await realpath(process.cwd());
+  const index = roomIndex(root, cwd);
   const room = campaignRooms[index];
   if (command === "resume") {
     console.log(await prepare(save, max));
@@ -84,15 +108,28 @@ async function main(command: string, args: string[]) {
     }
     return;
   }
-  if (command === "look" && !room) {
-    console.log(campaignName + "\nUse mudsh resume to return to the current room.");
+  if (command === "look" || command === "exit") {
+    if (index > max) return error("Enter an unlocked room first. Use mudsh resume to find it.");
+    const entries = await entriesAt(cwd);
+    const exits = assignDirections(entries.filter(e => e.directory).map(e => e.name), 1 + cwd);
+    if (command === "exit") {
+      const exit = exits.find(e => e.direction === args[0]?.toLowerCase());
+      if (!exit) return error(messages.missingExit);
+      console.log(join(cwd, exit.name));
+      return;
+    }
+    const [previous] = args;
+    const canBack = previous && previous !== cwd && (await stat(previous).catch(() => undefined))?.isDirectory();
+    const title = room && cwd === join(root, room.id) ? room.title : cwd === root ? campaignName : directoryName(cwd);
+    const description = room ? room.description + "\n" + room.task : "Use mudsh resume to return to the current room.";
+    console.log(terminalWorldText(formatSurvey({title, description, exits,
+      back: canBack ? directoryName(previous) : undefined, files: entries.filter(e => !e.directory).map(e => e.name)})));
     return;
   }
   if (!room || index > max) return error("Enter an unlocked room first. Use mudsh resume to find it.");
 
   switch (command) {
-    case "look": printRoom(room.title + "\n" + room.description + "\n" + room.task); return;
-    case "hint": printRoom(room.hint); return;
+    case "hint": console.log(terminalWorldText(room.hint)); return;
     case "next":
       if (index >= save.completed) return error("Solve this room to open the next door.");
       if (index + 1 >= campaignRooms.length) return error("The last room is complete.");

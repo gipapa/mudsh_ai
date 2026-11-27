@@ -1,4 +1,5 @@
-import { appendObjectText } from "./object-text.ts";
+import { appendWorldText } from "./object-text.ts";
+import { formatSurvey } from "./room-survey.ts";
 import { messages } from "./en.ts";
 import { campaignName, campaignRooms, roomIndex, validSave, type CampaignSave } from "./campaign.ts";
 import { startPath } from "./world.ts";
@@ -194,7 +195,7 @@ function print(value:string, kind="", prefix="") {
     label.textContent=prefix;
     pre.append(label);
   }
-  if (!kind || kind === "intro") appendObjectText(pre,value);
+  if (!kind || kind === "intro" || kind === "help") appendWorldText(pre,value,kind === "help");
   else pre.append(value);
   log.append(pre); log.scrollTop=log.scrollHeight;
 }
@@ -205,15 +206,19 @@ function controls() {
 }
 function render(room:Room) {
   el("room").textContent=room.title; el("cwd").textContent=room.cwd;
+  const exits = room.exits.map(({name,direction}) => ({
+    name:"[" + name + "]", direction, line:"go " + (name.toLowerCase() === "back" ? direction : name),
+  }));
+  if (room.back !== undefined) exits.push({name:"[" + room.back + "]",direction:"back",line:"go back"});
   for(const [id,items] of [
-    ["exits",room.exits.map(e=>({name:e.name,direction:e.direction || "go",line:"go "+e.name}))],
+    ["exits",exits],
     ["objects",room.files.map(name=>({name,direction:"",line:"read "+name}))]
   ] as const) {
     const list=el(id);list.replaceChildren();
     for(const item of items) {
       const b=document.createElement("button");b.className=id==="exits"?"exit":"file";
-      if(item.direction){const d=document.createElement("span");d.textContent=item.direction;b.append(d);}
-      b.append(document.createTextNode(item.name+(id==="exits"?"/":"")));
+      if(item.direction){const d=document.createElement("span");d.className="direction";d.textContent=item.direction + " ·";b.append(d);}
+      b.append(document.createTextNode((item.direction ? " " : "") + item.name));
       b.addEventListener("click",()=>send(item.line,true));list.append(b);
     }
     if(!items.length){const empty=document.createElement("span");empty.className="empty";empty.textContent="None here";list.append(empty);}
@@ -257,10 +262,10 @@ function start(save = readCampaign() ?? {seed:crypto.getRandomValues(new Uint32A
     el("progress").textContent=`${data.save.completed} / ${campaignRooms.length} rooms cleared`;
     const index=roomIndex(startPath,data.room.cwd);
     el("next-room").hidden=!(index >= 0 && index < data.save.completed && index + 1 < campaignRooms.length);
-    print(data.output,data.offline || data.failed ? "console-error" : (data.speaker ? "speaker" : ""),
+    print(data.output,data.offline || data.failed ? "console-error" : (data.speaker ? "speaker" : data.help ? "help" : ""),
       data.speaker && data.output ? data.speaker + " ❯ " : "");
     for (const ending of data.endings) print(messages.objectiveComplete + "\n" + ending,"goal-success");
-    if(first){print(data.room.title+"\n"+data.room.description,"intro");
+    if(first){print(formatSurvey(data.room),"intro");
       print("Read objective.txt to begin. Type help for MUD verbs, or !ls to use the shell.");first=false;}
     busy=false;ended=data.ended;controls();
     if(!ended && window.matchMedia("(pointer:fine)").matches)input.focus({preventScroll:true});

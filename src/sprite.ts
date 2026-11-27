@@ -7,7 +7,7 @@ export interface ModelInfo { id: string; ownedBy?: string; active?: boolean }
 type Message = {role: "system" | "user" | "assistant"; content: string};
 type Action = {kind: "reply" | "shell"; value: string; raw?: boolean};
 export type Progress = (stage: "thinking" | "executing" | "summarizing" | "output", text?: string) => void;
-export type SpriteWorld = Pick<Expedition, "io" | "cwd" | "history" | "ended" | "scene" |
+export type SpriteWorld = Pick<Expedition, "io" | "cwd" | "previousCwd" | "ended" | "scene" |
   "title" | "survey" | "move" | "run"> & { shellInstructions?: string };
 
 export function completionURL(base: string, allowRemoteHttp = false) {
@@ -166,7 +166,7 @@ function problem(error: unknown) {
 export async function roomContext(game: SpriteWorld, limit: number) {
   const room = await game.survey();
   return {...room, exits:room.exits.slice(0,limit), files:room.files.slice(0,limit),
-    totalExits:room.exits.length, totalFiles:room.files.length, previousCwd:game.history.at(-1)};
+    totalExits:room.exits.length, totalFiles:room.files.length, previousCwd:game.previousCwd};
 }
 
 export function recentHistory(history: Message[], options: SpriteOptions) {

@@ -1,6 +1,7 @@
 import { createDungeon } from "./session.ts";
 import { playTurn, type Progress, type SpriteHistory } from "./sprite.ts";
 import { route } from "./world.ts";
+import { isHelpCommand } from "./object-text.ts";
 import { defaultSpriteOptions } from "./sprite-options.ts";
 let game: Awaited<ReturnType<typeof createDungeon>>;
 let history: SpriteHistory = [];
@@ -8,12 +9,15 @@ self.onmessage = async ({data}) => {
   let output = "";
   let offline = false;
   let failed = false;
+  let help = false;
   let speaker: string | undefined;
   try {
     if ("save" in data) game = await createDungeon(data.save);
     else {
       if (data.resetHistory) history = [];
-      const spriteTurn = route(data.line,!!data.config) === "sprite";
+      const mode = route(data.line,!!data.config);
+      const spriteTurn = mode === "sprite";
+      help = mode === "mud" && isHelpCommand(data.line);
       if (spriteTurn) speaker = data.config.options?.name ?? defaultSpriteOptions.name;
       const progress: Progress = (stage,text)=>self.postMessage({stage,text,speaker});
       const advanced = spriteTurn && data.config.options?.mode === "advanced";
@@ -30,7 +34,7 @@ self.onmessage = async ({data}) => {
     return;
   }
   const endings = game.completions.splice(0);
-  const status = {output,ended:game.ended,offline,failed,speaker,endings,save:game.save};
+  const status = {output,ended:game.ended,offline,failed,help,speaker,endings,save:game.save};
   try {
     const room = await game.survey();
     self.postMessage({...status,room});
